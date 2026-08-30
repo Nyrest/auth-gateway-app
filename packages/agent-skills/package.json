@@ -1,0 +1,39 @@
+{
+  "name": "@auth-gateway/agent-skills",
+  "version": "0.1.0",
+  "description": "Versioned Auth Gateway guidance for coding agents, with deny-by-default discovery helpers.",
+  "license": "MIT",
+  "type": "module",
+  "keywords": ["auth-gateway", "tanstack-intent", "agent-skills"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/auth-gateway/auth-gateway-app",
+    "directory": "packages/agent-skills"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "skills", "docs", "README.md", "LICENSE", "!skills/_artifacts"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test",
+    "pack:check": "bun run build && bun pm pack --dry-run",
+    "intent:validate": "bun ../../node_modules/@tanstack/intent/dist/cli.mjs validate skills --check",
+    "intent:stale": "bun ../../node_modules/@tanstack/intent/dist/cli.mjs stale . --json && bun run check:stale",
+    "check:stale": "bun scripts/check-stale.ts"
+  },
+  "devDependencies": {
+    "@tanstack/intent": "^0.3.7",
+    "@types/node": "^22.10.2",
+    "typescript": "^6.0.2"
+  },
+  "intent": {
+    "version": 1,
+    "repo": "https://github.com/auth-gateway/auth-gateway-app",
+    "docs": "docs/"
+  }
+}

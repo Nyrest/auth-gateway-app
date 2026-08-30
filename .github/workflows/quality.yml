@@ -1,0 +1,37 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+      - run: bun install --frozen-lockfile
+      - run: bun run i18n:compile
+      - run: bun run check
+      - run: bun run typecheck
+      - run: bun run check:runtime-boundaries
+      - run: bun test
+      - run: bun run build:cloudflare
+      - run: bun run build:docker
+      - run: bun run build:cloudflare && bun run wrangler -- deploy --dry-run
+      - run: bun run db:generate
+      - run: bun run check
+        working-directory: packages/agent-skills
+      - run: bun test
+        working-directory: packages/agent-skills
+      - run: bun run intent:validate
+        working-directory: packages/agent-skills
+      - run: bun run intent:stale
+        working-directory: packages/agent-skills
+      - run: bun run pack:check
+        working-directory: packages/agent-skills

@@ -1,0 +1,25 @@
+{
+  "library_version": "0.1.0",
+  "skills": {
+    "auth-gateway-core": {
+      "sources_sha": {
+        "skills/auth-gateway-core/README.md": "98b591a90cb08e21fbcdd1d54518731b03b4821dce7de80f6aa87b5e33a2cf05"
+      }
+    },
+    "deployments-cron": {
+      "sources_sha": {
+        "skills/deployments-cron/README.md": "7e8cc8a6015dd8e8b4729eaacab70c78786b81dde8091c0773efa5b9edd0f8d7"
+      }
+    },
+    "proxy-streaming": {
+      "sources_sha": {
+        "skills/proxy-streaming/README.md": "c1f02c044b302f5f0419d2297b3f2d6fb82bca46b311046e2655909b2a41b0a6"
+      }
+    },
+    "security-audit": {
+      "sources_sha": {
+        "skills/security-audit/README.md": "f90fe51210910728845036176cfb5f082cc17abb3f3492f60f622ab49b8afeba"
+      }
+    }
+  }
+}

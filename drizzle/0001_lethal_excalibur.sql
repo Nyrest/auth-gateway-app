@@ -1,0 +1,1 @@
+ALTER TABLE "app_settings" ADD COLUMN "scheduler_lease_until" timestamp with time zone;

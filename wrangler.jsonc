@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "auth-gateway",
+  "compatibility_date": "2026-08-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/runtime/cloudflare/worker.ts",
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  }
+  // Add a Hyperdrive binding named HYPERDRIVE after creating it in Cloudflare.
+  // It intentionally has no placeholder ID here, so an accidental deploy cannot target a guessed database.
+}

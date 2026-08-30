@@ -1,0 +1,53 @@
+.page {
+	min-height: 100svh;
+	display: grid;
+	place-items: center;
+	padding: 1.25rem;
+	background: var(--background);
+}
+
+.panel {
+	width: min(100%, 28rem);
+}
+
+.brand {
+	display: flex;
+	align-items: center;
+	gap: 0.7rem;
+	margin-bottom: 1.5rem;
+	font-weight: 700;
+	letter-spacing: -0.03em;
+}
+
+.brandMark {
+	display: grid;
+	width: 2rem;
+	height: 2rem;
+	place-items: center;
+	border-radius: 0.65rem;
+	background: var(--primary);
+	color: var(--primary-foreground);
+}
+
+.form {
+	display: grid;
+	gap: 1rem;
+}
+
+.field {
+	display: grid;
+	gap: 0.45rem;
+}
+
+.error {
+	margin: 0;
+	color: var(--destructive);
+	font-size: 0.875rem;
+}
+
+.hint {
+	margin: 0;
+	color: var(--muted-foreground);
+	font-size: 0.875rem;
+	line-height: 1.5;
+}
