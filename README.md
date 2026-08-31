@@ -16,11 +16,10 @@ bun install --frozen-lockfile
 bun run secret:generate
 # Set AUTH_GATEWAY_SECRET and DATABASE_URL in .env or your shell.
 bun run db:migrate
-bun run setup:token
 bun run dev
 ```
 
-Open `http://localhost:3000`. Initial setup is both token-protected and atomically claimed. Public signup remains blocked. The UI is intentionally personal-use focused, while every persisted resource remains scoped by Better Auth user ID for future multi-user provisioning.
+Open `http://localhost:3000`. Initial setup creates the first account and is atomically claimed. Public signup remains blocked. The UI is intentionally personal-use focused, while every persisted resource remains scoped by Better Auth user ID for future multi-user provisioning.
 
 ## Configuration
 
@@ -57,7 +56,7 @@ The container runs migrations before serving, uses `Bun.serve`, safely serves bu
 
 ## Security model
 
-- Better Auth uses email/password, a 15-character minimum, database rate limits, explicit trusted origins, host-only secure cookies for HTTPS, and no public signup UI.
+- Better Auth uses email/password, an 8-character minimum, database rate limits, explicit trusted origins, host-only secure cookies for HTTPS, and no public signup UI.
 - All management Server Functions require a browser session and validate strict Zod payloads. `/docs` is session-protected; OpenAPI, health, OAuth callback, Better Auth, initial setup, and authenticated proxy are the only intentional public surfaces.
 - Provider secrets are AES-256-GCM encrypted with associated data. API keys are stored as digests and revealed once.
 - The streaming proxy caps request bodies at 100 MiB, validates paths and upstream URLs, blocks unsafe header injection and private/reserved literal targets unless explicitly opted in, handles redirects manually, and strips response cookies and hop-by-hop headers.

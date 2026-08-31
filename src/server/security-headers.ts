@@ -1,7 +1,7 @@
 import { createMiddleware } from "@tanstack/react-start";
 
 const CONTENT_SECURITY_POLICY =
-	"default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; object-src 'none'; style-src 'self' 'unsafe-inline';";
+	"default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';";
 
 /** Apply the same browser and transport protections on every deployment adapter. */
 export function secureResponse(request: Request, response: Response): Response {

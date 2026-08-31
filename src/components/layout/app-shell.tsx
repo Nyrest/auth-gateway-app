@@ -6,15 +6,14 @@ import {
 	KeyRound,
 	LayoutDashboard,
 	LogOut,
-	Moon,
 	PlugZap,
 	Settings,
 	ShieldCheck,
-	Sun,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 
 import { LanguageSelector } from "#/components/language-selector";
+import { ThemeToggle } from "#/components/theme-toggle";
 import { authClient } from "#/features/auth/auth-client";
 import { m } from "#/paraglide/messages.js";
 
@@ -38,21 +37,6 @@ export function AppShell() {
 	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
 	});
-	const [dark, setDark] = useState(false);
-
-	useEffect(() => {
-		const saved = window.localStorage.getItem("auth-gateway-theme");
-		const prefersDark = window.matchMedia(
-			"(prefers-color-scheme: dark)",
-		).matches;
-		setDark(saved === "dark" || (!saved && prefersDark));
-	}, []);
-
-	useEffect(() => {
-		document.documentElement.classList.toggle("dark", dark);
-		window.localStorage.setItem("auth-gateway-theme", dark ? "dark" : "light");
-	}, [dark]);
-
 	return (
 		<div className={styles.shell}>
 			<aside className={styles.sidebar} aria-label={m.overview()}>
@@ -118,15 +102,10 @@ export function AppShell() {
 					<span className={styles.breadcrumb}>
 						{m.overview()} / {getPageLabel(pathname)}
 					</span>
-					<LanguageSelector />
-					<button
-						aria-label={dark ? "Use light theme" : "Use dark theme"}
-						className="inline-flex size-9 items-center justify-center rounded-md border bg-background hover:bg-accent"
-						onClick={() => setDark((value) => !value)}
-						type="button"
-					>
-						{dark ? <Sun size={16} /> : <Moon size={16} />}
-					</button>
+					<div className={styles.headerActions}>
+						<LanguageSelector />
+						<ThemeToggle />
+					</div>
 				</header>
 				<div className={styles.content}>
 					<Outlet />

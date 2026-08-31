@@ -132,6 +132,12 @@
 	font-size: 0.875rem;
 }
 
+.headerActions {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
 .content {
 	width: min(100%, 100rem);
 	margin: 0 auto;

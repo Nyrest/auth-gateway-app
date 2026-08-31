@@ -2,20 +2,24 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { betterAuth } from "better-auth/minimal";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { eq } from "drizzle-orm";
+import { uuidv7 } from "uuidv7";
 
 import { appSettings, gatewaySchema } from "#/db/schema";
 
 import { getDb } from "../db/index.server";
 import { getBetterAuthSecret } from "./config.server";
 
-export async function getAuth() {
+export async function getAuth(baseURLOverride?: string) {
 	const db = getDb();
-	const [settings] = await db
-		.select({ publicOrigin: appSettings.publicOrigin })
-		.from(appSettings)
-		.where(eq(appSettings.id, "primary"))
-		.limit(1);
-	const publicOrigin = settings?.publicOrigin ?? undefined;
+	let publicOrigin = baseURLOverride;
+	if (publicOrigin === undefined) {
+		const [settings] = await db
+			.select({ publicOrigin: appSettings.publicOrigin })
+			.from(appSettings)
+			.where(eq(appSettings.id, "primary"))
+			.limit(1);
+		publicOrigin = settings?.publicOrigin ?? undefined;
+	}
 
 	return betterAuth({
 		appName: "Auth Gateway",
@@ -27,7 +31,7 @@ export async function getAuth() {
 		}),
 		emailAndPassword: {
 			enabled: true,
-			minPasswordLength: 15,
+			minPasswordLength: 8,
 			maxPasswordLength: 128,
 		},
 		session: {
@@ -42,8 +46,8 @@ export async function getAuth() {
 			max: 10,
 		},
 		advanced: {
+			database: { generateId: () => uuidv7() },
 			useSecureCookies: publicOrigin?.startsWith("https://") ?? false,
-			database: { generateId: "uuid" },
 		},
 		trustedOrigins: publicOrigin ? [publicOrigin] : [],
 		databaseHooks: {

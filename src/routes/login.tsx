@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { LanguageSelector } from "#/components/language-selector";
+import { ThemeToggle } from "#/components/theme-toggle";
 import { Button } from "#/components/ui/button";
 import {
 	Card,
@@ -54,8 +55,9 @@ function LoginPage() {
 	return (
 		<main className={styles.page}>
 			<div className={styles.panel}>
-				<div className="absolute right-4 top-4">
+				<div className="absolute right-4 top-4 flex items-center gap-2">
 					<LanguageSelector />
+					<ThemeToggle />
 				</div>
 				<div className={styles.brand}>
 					<span className={styles.brandMark}>

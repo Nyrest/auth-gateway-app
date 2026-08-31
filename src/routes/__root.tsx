@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { getLocale } from "#/paraglide/runtime.js";
+import { themeInitScript } from "../components/theme-toggle";
 import { getQueryClient } from "../lib/query-client";
 import appCss from "../styles.css?url";
 
@@ -30,9 +31,10 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang={getLocale()}>
+		<html lang={getLocale()} suppressHydrationWarning>
 			<head>
 				<HeadContent />
+				<script>{themeInitScript}</script>
 			</head>
 			<body>
 				<QueryClientProvider client={getQueryClient()}>

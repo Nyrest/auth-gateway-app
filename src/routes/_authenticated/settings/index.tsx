@@ -65,7 +65,7 @@ function SettingsPage() {
 							<Label htmlFor="new-password">New password</Label>
 							<Input
 								id="new-password"
-								minLength={15}
+								minLength={8}
 								onChange={(event) => setNewPassword(event.target.value)}
 								required
 								type="password"

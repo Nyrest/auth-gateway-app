@@ -1,24 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-import { and, eq, isNull, lt, or } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "#/db/index.server";
 import { appSettings, userSettings } from "#/db/schema";
+import {
+	changePasswordSchema,
+	setupSchema,
+} from "#/features/auth/auth-validation";
 import { getAuth, getSession } from "#/server/auth.server";
 import { requireUser } from "#/server/auth-middleware";
-import { isValidSetupToken } from "#/server/config.server";
-import { createApiKeySecret } from "#/server/crypto.server";
 import { GatewayError } from "#/server/errors";
-
-const setupSchema = z
-	.object({
-		name: z.string().trim().min(1).max(100),
-		email: z.email().max(320),
-		password: z.string().min(15).max(128),
-		publicOrigin: z.url().max(2_048),
-		setupToken: z.string().min(20).max(200),
-	})
-	.strict();
 
 function normalizeOrigin(value: string): string {
 	const url = new URL(value);
@@ -63,75 +54,42 @@ export const getSetupStatus = createServerFn({ method: "GET" }).handler(
 export const completeSetup = createServerFn({ method: "POST" })
 	.validator(setupSchema)
 	.handler(async ({ data }) => {
-		if (!isValidSetupToken(data.setupToken)) {
-			throw new GatewayError(
-				403,
-				"INVALID_SETUP_TOKEN",
-				"The setup token is invalid.",
-			);
-		}
 		const db = getDb();
-		const claim = createApiKeySecret();
-		const now = new Date();
-		const claimExpiresAt = new Date(now.getTime() + 5 * 60 * 1_000);
 		const publicOrigin = normalizeOrigin(data.publicOrigin);
 
-		const claimed = await db.transaction(async (tx) => {
-			const [row] = await tx
-				.update(appSettings)
-				.set({
-					setupClaim: claim,
-					setupClaimExpiresAt: claimExpiresAt,
-					publicOrigin,
-					updatedAt: now,
-				})
-				.where(
-					and(
-						eq(appSettings.id, "primary"),
-						isNull(appSettings.ownerUserId),
-						or(
-							isNull(appSettings.setupClaimExpiresAt),
-							lt(appSettings.setupClaimExpiresAt, now),
-						),
-					),
-				)
-				.returning({ id: appSettings.id });
-			return row;
-		});
+		return db.transaction(async (tx) => {
+			const [settings] = await tx
+				.select({ ownerUserId: appSettings.ownerUserId })
+				.from(appSettings)
+				.where(eq(appSettings.id, "primary"))
+				.for("update");
 
-		if (!claimed) {
-			throw new GatewayError(
-				409,
-				"SETUP_ALREADY_CLAIMED",
-				"This installation has already been claimed.",
-			);
-		}
+			if (!settings || settings.ownerUserId) {
+				throw new GatewayError(
+					409,
+					"SETUP_ALREADY_CLAIMED",
+					"This installation has already been claimed.",
+				);
+			}
 
-		try {
-			const response = await (await getAuth()).api.signUpEmail({
+			const response = await (await getAuth(publicOrigin)).api.signUpEmail({
 				body: { email: data.email, name: data.name, password: data.password },
 			});
 
-			await db.transaction(async (tx) => {
-				await tx
-					.update(appSettings)
-					.set({
-						ownerUserId: response.user.id,
-						setupClaim: null,
-						setupClaimExpiresAt: null,
-						updatedAt: new Date(),
-					})
-					.where(
-						and(
-							eq(appSettings.id, "primary"),
-							eq(appSettings.setupClaim, claim),
-						),
-					);
-				await tx
-					.insert(userSettings)
-					.values({ userId: response.user.id })
-					.onConflictDoNothing();
-			});
+			await tx
+				.update(appSettings)
+				.set({
+					ownerUserId: response.user.id,
+					publicOrigin,
+					updatedAt: new Date(),
+				})
+				.where(
+					and(eq(appSettings.id, "primary"), isNull(appSettings.ownerUserId)),
+				);
+			await tx
+				.insert(userSettings)
+				.values({ userId: response.user.id })
+				.onConflictDoNothing();
 
 			return {
 				user: {
@@ -140,19 +98,7 @@ export const completeSetup = createServerFn({ method: "POST" })
 					name: response.user.name,
 				},
 			};
-		} catch (error) {
-			await db
-				.update(appSettings)
-				.set({
-					setupClaim: null,
-					setupClaimExpiresAt: null,
-					updatedAt: new Date(),
-				})
-				.where(
-					and(eq(appSettings.id, "primary"), eq(appSettings.setupClaim, claim)),
-				);
-			throw error;
-		}
+		});
 	});
 
 export const getCurrentSession = createServerFn({ method: "GET" }).handler(
@@ -172,14 +118,7 @@ export const getCurrentSession = createServerFn({ method: "GET" }).handler(
 
 export const changePassword = createServerFn({ method: "POST" })
 	.middleware([requireUser])
-	.validator(
-		z
-			.object({
-				currentPassword: z.string().min(1),
-				newPassword: z.string().min(15).max(128),
-			})
-			.strict(),
-	)
+	.validator(changePasswordSchema)
 	.handler(async ({ data }) => {
 		await (await getAuth()).api.changePassword({
 			body: {

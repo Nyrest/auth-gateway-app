@@ -15,6 +15,20 @@
       "when": 1788023260186,
       "tag": "0001_lethal_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788104623945,
+      "tag": "0002_crazy_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788148125312,
+      "tag": "0003_open_korath",
+      "breakpoints": true
     }
   ]
 }

@@ -51,12 +51,8 @@ const timestampColumns = {
 
 export const appSettings = pgTable("app_settings", {
 	id: text("id").primaryKey().default("primary"),
-	ownerUserId: text("owner_user_id").references(() => authUsers.id, {
+	ownerUserId: uuid("owner_user_id").references(() => authUsers.id, {
 		onDelete: "set null",
-	}),
-	setupClaim: text("setup_claim"),
-	setupClaimExpiresAt: timestamp("setup_claim_expires_at", {
-		withTimezone: true,
 	}),
 	publicOrigin: text("public_origin"),
 	metricsCleanupDueAt: timestamp("metrics_cleanup_due_at", {
@@ -71,7 +67,7 @@ export const appSettings = pgTable("app_settings", {
 export const userSettings = pgTable(
 	"user_settings",
 	{
-		userId: text("user_id")
+		userId: uuid("user_id")
 			.primaryKey()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		healthChecksEnabled: boolean("health_checks_enabled")
@@ -89,7 +85,7 @@ export const providerInstances = pgTable(
 	"provider_instance",
 	{
 		id: uuid("id").primaryKey(),
-		userId: text("user_id")
+		userId: uuid("user_id")
 			.notNull()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		templateSlug: text("template_slug").notNull(),
@@ -131,7 +127,7 @@ export const providerSecrets = pgTable(
 	"provider_secret",
 	{
 		id: uuid("id").primaryKey(),
-		userId: text("user_id")
+		userId: uuid("user_id")
 			.notNull()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		instanceId: uuid("instance_id")
@@ -159,7 +155,7 @@ export const oauthStates = pgTable(
 		id: uuid("id").primaryKey(),
 		stateDigest: text("state_digest").notNull(),
 		verifierEnvelope: text("verifier_envelope").notNull(),
-		userId: text("user_id")
+		userId: uuid("user_id")
 			.notNull()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		instanceId: uuid("instance_id")
@@ -182,7 +178,7 @@ export const apiKeys = pgTable(
 	"api_key",
 	{
 		id: uuid("id").primaryKey(),
-		userId: text("user_id")
+		userId: uuid("user_id")
 			.notNull()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		label: text("label").notNull(),
@@ -205,7 +201,7 @@ export const auditEvents = pgTable(
 	"audit_event",
 	{
 		id: uuid("id").primaryKey(),
-		userId: text("user_id")
+		userId: uuid("user_id")
 			.notNull()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		action: text("action").notNull(),
@@ -225,7 +221,7 @@ export const requestMetrics = pgTable(
 	"request_metric",
 	{
 		id: uuid("id").primaryKey(),
-		userId: text("user_id")
+		userId: uuid("user_id")
 			.notNull()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		instanceId: uuid("instance_id").references(() => providerInstances.id, {

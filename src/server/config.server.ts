@@ -1,4 +1,4 @@
-import { createHash, hkdfSync, timingSafeEqual } from "node:crypto";
+import { createHash, hkdfSync } from "node:crypto";
 
 import { decodeRootSecret } from "#/runtime/secret.server";
 import { getRuntimeFromStartContext } from "./request-runtime.server";
@@ -44,20 +44,6 @@ export function deriveSecret(label: string, outputLength = 32): Uint8Array {
 
 export function getBetterAuthSecret(): string {
 	return encodeBase64Url(deriveSecret("better-auth"));
-}
-
-export function getSetupToken(): string {
-	return encodeBase64Url(deriveSecret("setup-token"));
-}
-
-export function isValidSetupToken(candidate: string | null): boolean {
-	if (!candidate) {
-		return false;
-	}
-
-	const expected = Buffer.from(getSetupToken());
-	const actual = Buffer.from(candidate);
-	return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 export function sha256(value: string): string {
