@@ -1,4 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { LanguageSelector } from "#/components/language-selector";
@@ -38,6 +39,7 @@ export const Route = createFileRoute("/setup")({
 
 function SetupPage() {
 	const navigate = useNavigate();
+	const completeSetupRequest = useServerFn(completeSetup);
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -69,7 +71,7 @@ function SetupPage() {
 		}
 
 		try {
-			await completeSetup({
+			await completeSetupRequest({
 				data: { email, name, password, publicOrigin },
 			});
 			const result = await authClient.signIn.email({ email, password });

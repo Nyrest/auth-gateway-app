@@ -1,0 +1,117 @@
+import { baseUrlField, stringField, testFields } from "./common";
+import type { ProviderDefinition, ProviderField } from "./types";
+
+export type OidcDiscoveryDocument = {
+	readonly authorizationEndpoint: string;
+	readonly tokenEndpoint: string;
+};
+
+export function createPkceVerifier(bytes = 48): string {
+	const value = new Uint8Array(bytes);
+	crypto.getRandomValues(value);
+	return Buffer.from(value).toString("base64url");
+}
+
+export async function createPkceChallenge(verifier: string): Promise<string> {
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(verifier),
+	);
+	return Buffer.from(digest).toString("base64url");
+}
+
+export function parseOidcDiscoveryDocument(
+	payload: unknown,
+): OidcDiscoveryDocument | undefined {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+		return undefined;
+	}
+	const authorizationEndpoint = (payload as Record<string, unknown>)
+		.authorization_endpoint;
+	const tokenEndpoint = (payload as Record<string, unknown>).token_endpoint;
+	return typeof authorizationEndpoint === "string" &&
+		typeof tokenEndpoint === "string"
+		? { authorizationEndpoint, tokenEndpoint }
+		: undefined;
+}
+
+/** OIDC providers share public metadata fields and encrypted token fields. */
+export function oidcFields(): readonly ProviderField[] {
+	return [
+		baseUrlField,
+		stringField("issuer", "provider_field_issuer", {
+			required: true,
+			secret: false,
+			outboundUrl: "absolute",
+		}),
+		stringField("client_id", "provider_field_client_id", {
+			required: true,
+			secret: false,
+		}),
+		stringField("client_secret", "provider_field_client_secret", {
+			required: true,
+			secret: true,
+		}),
+		stringField("scopes", "provider_field_scopes", {
+			required: false,
+			secret: false,
+		}),
+		stringField("access_token", "provider_field_access_token", {
+			required: false,
+			secret: true,
+		}),
+		...testFields,
+	];
+}
+
+/** Fixed-endpoint OIDC providers do not need a user-supplied issuer. */
+export function oauthFields(): readonly ProviderField[] {
+	return [
+		baseUrlField,
+		stringField("client_id", "provider_field_client_id", {
+			required: true,
+			secret: false,
+		}),
+		stringField("client_secret", "provider_field_client_secret", {
+			required: true,
+			secret: true,
+		}),
+		stringField("scopes", "provider_field_scopes", {
+			required: false,
+			secret: false,
+		}),
+		stringField("access_token", "provider_field_access_token", {
+			required: false,
+			secret: true,
+		}),
+	];
+}
+
+export function createOidcProvider(input: {
+	readonly slug: string;
+	readonly nameKey: ProviderDefinition["metadata"]["nameKey"];
+	readonly descriptionKey: ProviderDefinition["metadata"]["descriptionKey"];
+	readonly category: "generic" | "predefined";
+	readonly defaultBaseUrl: string;
+	readonly fields?: readonly ProviderField[];
+	/** Fixed endpoint OAuth providers can opt out of the OIDC protocol label. */
+	readonly protocol?: "oauth2" | "oidc";
+	readonly endpoints?: {
+		readonly authorizationUrl: string;
+		readonly tokenUrl: string;
+	};
+}): ProviderDefinition {
+	return {
+		slug: input.slug,
+		category: input.category,
+		defaultBaseUrl: input.defaultBaseUrl,
+		protocol: input.protocol ?? "oidc",
+		fields: input.fields ?? oidcFields(),
+		capabilities: { connect: true, test: true, refresh: true },
+		metadata: {
+			nameKey: input.nameKey,
+			descriptionKey: input.descriptionKey,
+		},
+		...(input.endpoints ? { oauthEndpoints: input.endpoints } : {}),
+	};
+}

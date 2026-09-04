@@ -5,6 +5,7 @@ import type { RuntimeServices } from "#/runtime/contract.server";
 import { decodeRootSecret } from "#/runtime/secret.server";
 import { runScheduledMaintenance } from "#/server/scheduler.server";
 import { handleApplicationRequest } from "#/server-runtime.server";
+import { resolveHostname } from "./hostname-resolution";
 
 type ServerEntry = {
 	fetch(request: Request, options?: object): Promise<Response> | Response;
@@ -27,6 +28,7 @@ function createServices(): RuntimeServices {
 	return {
 		database: createDatabase(requiredEnvironment("DATABASE_URL"), 5),
 		kind: "bun",
+		resolveHostname,
 		rootSecret: decodeRootSecret(requiredEnvironment("AUTH_GATEWAY_SECRET")),
 	};
 }

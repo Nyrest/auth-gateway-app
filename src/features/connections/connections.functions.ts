@@ -2,13 +2,17 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { requireUser } from "#/server/auth-middleware";
+import { GatewayError } from "#/server/errors";
 import { verifyConnection } from "./connection-actions.server";
 import {
 	asJsonObject,
 	createConnection,
 	deleteConnection,
 	getConnection,
+	getConnectionDetails,
 	listConnections,
+	setConnectionEnabled,
+	updateConnection,
 } from "./connections.server";
 import { beginOAuthConnection, connectClientCredentials } from "./oauth.server";
 import { providerTemplates } from "./templates";
@@ -22,7 +26,6 @@ const connectionInputSchema = z
 		baseUrl: z.url().max(2_048),
 		config: z.record(z.string().max(80), z.json()).default({}),
 		secrets: z.record(z.string().max(80), z.string().max(16_384)).default({}),
-		allowPrivateNetwork: z.boolean().default(false),
 		healthIntervalMinutes: z.number().int().min(5).max(1_440).optional(),
 	})
 	.strict();
@@ -48,13 +51,82 @@ export const createConnectionForUser = createServerFn({ method: "POST" })
 			Object.keys(data.config).length > 50 ||
 			Object.keys(data.secrets).length > 50
 		) {
-			throw new Error("Connection fields exceed the supported limit.");
+			throw new GatewayError(
+				400,
+				"TOO_MANY_PROVIDER_FIELDS",
+				"The connection contains too many provider fields.",
+			);
 		}
 		return createConnection(context.userId, {
 			...data,
 			config: asJsonObject(data.config),
 		});
 	});
+
+const updateConnectionSchema = z
+	.object({
+		id: z.uuid(),
+		name: z.string().min(1).max(120),
+		providerSlug: z.string().min(1).max(63),
+		baseUrl: z.url().max(2_048),
+		config: z.record(z.string().max(80), z.json()).default({}),
+		secrets: z.record(z.string().max(80), z.string().max(16_384)).default({}),
+		clearSecrets: z.array(z.string().max(80)).max(50).default([]),
+		healthIntervalMinutes: z
+			.number()
+			.int()
+			.min(5)
+			.max(1_440)
+			.nullable()
+			.optional(),
+	})
+	.strict();
+
+export const updateConnectionForUser = createServerFn({ method: "POST" })
+	.middleware([requireUser])
+	.validator(updateConnectionSchema)
+	.handler(({ context, data }) => {
+		if (
+			Object.keys(data.config).length > 50 ||
+			Object.keys(data.secrets).length > 50
+		) {
+			throw new GatewayError(
+				400,
+				"TOO_MANY_PROVIDER_FIELDS",
+				"The connection contains too many provider fields.",
+			);
+		}
+		return updateConnection(context.userId, data.id, {
+			...data,
+			config: asJsonObject(data.config),
+		});
+	});
+
+export const enableConnectionForUser = createServerFn({ method: "POST" })
+	.middleware([requireUser])
+	.validator(connectionIdSchema)
+	.handler(({ context, data }) =>
+		setConnectionEnabled(context.userId, data.id, true),
+	);
+
+export const disableConnectionForUser = createServerFn({ method: "POST" })
+	.middleware([requireUser])
+	.validator(connectionIdSchema)
+	.handler(({ context, data }) =>
+		setConnectionEnabled(context.userId, data.id, false),
+	);
+
+export const testConnectionForUser = createServerFn({ method: "POST" })
+	.middleware([requireUser])
+	.validator(connectionIdSchema)
+	.handler(({ context, data }) => verifyConnection(context.userId, data.id));
+
+export const getConnectionDetailsForUser = createServerFn({ method: "GET" })
+	.middleware([requireUser])
+	.validator(connectionIdSchema)
+	.handler(({ context, data }) =>
+		getConnectionDetails(context.userId, data.id),
+	);
 
 export const deleteConnectionForUser = createServerFn({ method: "POST" })
 	.middleware([requireUser])

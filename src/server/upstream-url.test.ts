@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { appendUpstreamPath, validateUpstreamUrl } from "./upstream-url.server";
+import {
+	appendUpstreamPath,
+	assertPublicDnsAddresses,
+	validateUpstreamUrl,
+} from "./upstream-url.server";
 
 describe("upstream URL validation", () => {
 	test("rejects credentials, fragments, and private literals by default", () => {
@@ -18,10 +22,36 @@ describe("upstream URL validation", () => {
 			"127.0.0.1",
 		);
 		expect(() =>
-			appendUpstreamPath("https://api.example.com", "%2e%2e/admin", ""),
+			appendUpstreamPath(
+				validateUpstreamUrl("https://api.example.com"),
+				"%2e%2e/admin",
+				"",
+			),
 		).toThrow();
 		expect(() =>
-			appendUpstreamPath("https://api.example.com", "%252e%252e/admin", ""),
+			appendUpstreamPath(
+				validateUpstreamUrl("https://api.example.com"),
+				"%252e%252e/admin",
+				"",
+			),
 		).toThrow();
+	});
+
+	test("rejects every private DNS answer and the complete IPv6 link-local range", () => {
+		expect(() =>
+			assertPublicDnsAddresses("upstream.example", ["203.0.113.10"]),
+		).toThrow();
+		expect(() =>
+			assertPublicDnsAddresses("upstream.example", ["fe90::1"]),
+		).toThrow();
+		expect(() =>
+			assertPublicDnsAddresses("upstream.example", ["febf::1"]),
+		).toThrow();
+		expect(() =>
+			assertPublicDnsAddresses("upstream.example", ["8.8.8.8", "127.0.0.1"]),
+		).toThrow();
+		expect(() =>
+			assertPublicDnsAddresses("upstream.example", ["8.8.8.8"]),
+		).not.toThrow();
 	});
 });

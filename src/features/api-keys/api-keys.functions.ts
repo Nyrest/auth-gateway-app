@@ -3,11 +3,33 @@ import { z } from "zod";
 
 import { requireUser } from "#/server/auth-middleware";
 
-import { createApiKey, listApiKeys, revokeApiKey } from "./api-keys.server";
+import {
+	apiKeyPermissions,
+	createApiKey,
+	deleteApiKey,
+	listApiKeyScopeOptions,
+	listApiKeys,
+	revokeApiKey,
+	updateApiKey,
+} from "./api-keys.server";
 
 export const listApiKeysForUser = createServerFn({ method: "GET" })
 	.middleware([requireUser])
-	.handler(({ context }) => listApiKeys(context.userId));
+	.validator(
+		z
+			.object({
+				search: z.string().max(120).optional(),
+				permission: z.enum(apiKeyPermissions).optional(),
+				status: z.enum(["all", "active", "expired", "revoked"]).optional(),
+				page: z.number().int().min(0).optional(),
+				pageSize: z.number().int().min(1).max(100).optional(),
+				sort: z.enum(["prefix", "label", "expiresAt", "status"]).optional(),
+				direction: z.enum(["asc", "desc"]).optional(),
+			})
+			.strict()
+			.default({}),
+	)
+	.handler(({ context, data }) => listApiKeys(context.userId, data ?? {}));
 
 export const createApiKeyForUser = createServerFn({ method: "POST" })
 	.middleware([requireUser])
@@ -15,13 +37,50 @@ export const createApiKeyForUser = createServerFn({ method: "POST" })
 		z
 			.object({
 				label: z.string().min(1).max(120),
+				permissions: z
+					.array(z.enum(apiKeyPermissions))
+					.max(20)
+					.default(["proxy"]),
+				providerScopeMode: z.enum(["all", "selected"]).default("all"),
 				providerSlugs: z.array(z.string().min(1).max(63)).max(100).default([]),
 				instanceIds: z.array(z.uuid()).max(100).default([]),
-				expiresAt: z.coerce.date().optional(),
+				expiresAt: z.coerce.date().nullable().optional(),
 			})
 			.strict(),
 	)
 	.handler(({ context, data }) => createApiKey(context.userId, data));
+
+export const updateApiKeyForUser = createServerFn({ method: "POST" })
+	.middleware([requireUser])
+	.validator(
+		z
+			.object({
+				id: z.uuid(),
+				label: z.string().min(1).max(120),
+				permissions: z
+					.array(z.enum(apiKeyPermissions))
+					.max(20)
+					.default(["proxy"]),
+				providerScopeMode: z.enum(["all", "selected"]).default("all"),
+				providerSlugs: z.array(z.string().min(1).max(63)).max(100).default([]),
+				instanceIds: z.array(z.uuid()).max(100).default([]),
+				expiresAt: z.coerce.date().nullable().optional(),
+			})
+			.strict(),
+	)
+	.handler(({ context, data }) => updateApiKey(context.userId, data.id, data));
+
+export const deleteApiKeyForUser = createServerFn({ method: "POST" })
+	.middleware([requireUser])
+	.validator(z.object({ id: z.uuid() }).strict())
+	.handler(async ({ context, data }) => {
+		await deleteApiKey(context.userId, data.id);
+		return { ok: true };
+	});
+
+export const listApiKeyScopeOptionsForUser = createServerFn({ method: "GET" })
+	.middleware([requireUser])
+	.handler(({ context }) => listApiKeyScopeOptions(context.userId));
 
 export const revokeApiKeyForUser = createServerFn({ method: "POST" })
 	.middleware([requireUser])

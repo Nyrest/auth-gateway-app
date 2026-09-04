@@ -3,6 +3,7 @@
 import { XIcon } from "lucide-react";
 import { Dialog as SheetPrimitive } from "radix-ui";
 import type * as React from "react";
+import { m } from "#/paraglide/messages.js";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -75,7 +76,7 @@ function SheetContent({
 							size="icon-sm"
 						>
 							<XIcon />
-							<span className="sr-only">Close</span>
+							<span className="sr-only">{m.close()}</span>
 						</Button>
 					</SheetPrimitive.Close>
 				)}

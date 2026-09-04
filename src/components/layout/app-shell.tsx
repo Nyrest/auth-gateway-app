@@ -10,7 +10,7 @@ import {
 	Settings,
 	ShieldCheck,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { LanguageSelector } from "#/components/language-selector";
 import { ThemeToggle } from "#/components/theme-toggle";
@@ -37,6 +37,18 @@ export function AppShell() {
 	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
 	});
+	const isNavigationLoading = useRouterState({
+		select: (state) => state.isLoading,
+	});
+	const [showPendingIndicator, setShowPendingIndicator] = useState(false);
+	useEffect(() => {
+		if (!isNavigationLoading) {
+			setShowPendingIndicator(false);
+			return;
+		}
+		const timer = window.setTimeout(() => setShowPendingIndicator(true), 150);
+		return () => window.clearTimeout(timer);
+	}, [isNavigationLoading]);
 	return (
 		<div className={styles.shell}>
 			<aside className={styles.sidebar} aria-label={m.overview()}>
@@ -98,6 +110,9 @@ export function AppShell() {
 			</aside>
 
 			<main className={styles.main}>
+				{showPendingIndicator ? (
+					<div className={styles.pendingIndicator} aria-hidden="true" />
+				) : null}
 				<header className={styles.header}>
 					<span className={styles.breadcrumb}>
 						{m.overview()} / {getPageLabel(pathname)}

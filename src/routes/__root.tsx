@@ -1,11 +1,18 @@
-import { QueryClientProvider } from "@tanstack/react-query";
-import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+	createRootRouteWithContext,
+	HeadContent,
+	Scripts,
+} from "@tanstack/react-router";
+import { m } from "#/paraglide/messages.js";
 import { getLocale } from "#/paraglide/runtime.js";
 import { themeInitScript } from "../components/theme-toggle";
 import { getQueryClient } from "../lib/query-client";
 import appCss from "../styles.css?url";
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{
+	queryClient: QueryClient;
+}>()({
 	head: () => ({
 		meta: [
 			{
@@ -16,7 +23,7 @@ export const Route = createRootRoute({
 				content: "width=device-width, initial-scale=1",
 			},
 			{
-				title: "Auth Gateway",
+				title: m.app_name(),
 			},
 		],
 		links: [

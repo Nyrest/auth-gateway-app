@@ -4,7 +4,10 @@ import { providerInstances } from "#/db/schema";
 import { recordAuditEvent } from "#/server/audit.server";
 import { GatewayError } from "#/server/errors";
 import { injectConnectionCredentials } from "#/server/proxy.server";
-import { validateUpstreamUrl } from "#/server/upstream-url.server";
+import {
+	appendUpstreamPath,
+	validateConfiguredUpstreamUrl,
+} from "#/server/upstream-url.server";
 
 import { readConnectionSecrets } from "./secrets.server";
 import { getProviderTemplate } from "./templates";
@@ -14,7 +17,15 @@ function configString(config: unknown, key: string): string | undefined {
 		return undefined;
 	}
 	const value = (config as Record<string, unknown>)[key];
-	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+	if (typeof value === "string" && value.trim()) return value.trim();
+	if (key === "test_body" && value && typeof value === "object") {
+		try {
+			return JSON.stringify(value);
+		} catch {
+			return undefined;
+		}
+	}
+	return undefined;
 }
 
 export async function verifyConnection(
@@ -43,30 +54,121 @@ export async function verifyConnection(
 			"Connection not found.",
 		);
 	}
-	const target = validateUpstreamUrl(
-		configString(instance.config, "test_url") ?? instance.baseUrl,
-		instance.allowPrivateNetwork,
-	);
+	const template = getProviderTemplate(instance.templateSlug);
+	const configuredTestUrl = configString(instance.config, "test_url");
+	let baseUrl: URL;
+	try {
+		baseUrl = await validateConfiguredUpstreamUrl(instance.baseUrl);
+	} catch (error) {
+		if (
+			error instanceof GatewayError &&
+			error.code === "PRIVATE_UPSTREAM_BLOCKED"
+		) {
+			recordAuditEvent({
+				action: "connection.verification_failed",
+				metadata: { code: error.code },
+				resourceId: instanceId,
+				resourceType: "connection",
+				result: "degraded",
+				userId,
+			});
+		}
+		throw error;
+	}
 	const secrets = await readConnectionSecrets(userId, instanceId);
-	if (
-		getProviderTemplate(instance.templateSlug)?.connectable &&
-		!secrets.get("access_token")
-	) {
+	if (template?.capabilities.connect && !secrets.get("access_token")) {
 		throw new GatewayError(
 			400,
 			"CONNECTION_NOT_CONNECTED",
 			"Connect this OAuth connection before verifying it.",
 		);
 	}
-	const method =
-		configString(instance.config, "test_method") === "POST" ? "POST" : "GET";
-	const testBody = configString(instance.config, "test_body");
+
+	let target: URL;
+	let method: "GET" | "POST";
+	let testBody: string | undefined;
+	let credentialPath: string;
+	try {
+		switch (instance.templateSlug) {
+			case "github_oauth": {
+				// GitHub verifies OAuth credentials through the app-management
+				// endpoint, which requires Basic auth and the access token in JSON.
+				const clientId =
+					configString(instance.config, "client_id") ??
+					secrets.get("client_id");
+				const accessToken = secrets.get("access_token");
+				if (!clientId || !accessToken) {
+					throw new GatewayError(
+						400,
+						"CONNECTION_NOT_CONNECTED",
+						"Connect this OAuth connection before verifying it.",
+					);
+				}
+				credentialPath = `applications/${clientId}/token`;
+				target = appendUpstreamPath(baseUrl, credentialPath, "");
+				method = "POST";
+				testBody = JSON.stringify({ access_token: accessToken });
+				break;
+			}
+			case "google_oauth":
+				target = new URL("https://openidconnect.googleapis.com/v1/userinfo");
+				method = "GET";
+				credentialPath = "";
+				break;
+			case "microsoft_entra_oauth":
+				target = new URL("https://graph.microsoft.com/oidc/userinfo");
+				method = "GET";
+				credentialPath = "";
+				break;
+			default:
+				target = new URL(configuredTestUrl ?? baseUrl.toString(), baseUrl);
+				method =
+					configString(instance.config, "test_method") === "POST"
+						? "POST"
+						: "GET";
+				testBody = configString(instance.config, "test_body");
+				credentialPath = target.pathname.replace(/^\//, "");
+				if (method === "GET" && testBody) {
+					throw new GatewayError(
+						400,
+						"INVALID_TEST_BODY",
+						"Test JSON body cannot be used with GET.",
+					);
+				}
+		}
+	} catch (error) {
+		if (error instanceof GatewayError) throw error;
+		throw new GatewayError(400, "INVALID_TEST_URL", "The test URL is invalid.");
+	}
+	try {
+		target = await validateConfiguredUpstreamUrl(target.toString());
+	} catch (error) {
+		if (
+			error instanceof GatewayError &&
+			error.code === "PRIVATE_UPSTREAM_BLOCKED"
+		) {
+			recordAuditEvent({
+				action: "connection.verification_failed",
+				metadata: { code: error.code },
+				resourceId: instanceId,
+				resourceType: "connection",
+				result: "degraded",
+				userId,
+			});
+		}
+		throw error;
+	}
 	const headers = new Headers({ accept: "application/json" });
 	injectConnectionCredentials(
 		headers,
 		instance.templateSlug,
-		target.pathname.replace(/^\//, ""),
+		credentialPath,
 		secrets,
+		instance.config &&
+			typeof instance.config === "object" &&
+			!Array.isArray(instance.config)
+			? (instance.config as Record<string, unknown>)
+			: undefined,
 	);
 	if (method === "POST" && testBody) {
 		try {
@@ -127,6 +229,7 @@ export async function verifyConnection(
 		metadata: { statusCode: response?.status ?? null },
 		resourceId: instanceId,
 		resourceType: "connection",
+		result: ok ? "success" : "failure",
 		userId,
 	});
 	return { ok, statusCode: response?.status ?? 502 };

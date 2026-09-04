@@ -16,7 +16,16 @@ import {
 	encryptSecret,
 } from "#/server/crypto.server";
 import { GatewayError } from "#/server/errors";
-import { validateUpstreamUrl } from "#/server/upstream-url.server";
+import {
+	getAllowPrivateNetwork,
+	validateConfiguredUpstreamUrl,
+	validateOutboundUpstreamUrl,
+} from "#/server/upstream-url.server";
+import {
+	createPkceChallenge,
+	createPkceVerifier,
+	parseOidcDiscoveryDocument,
+} from "./providers/oidc";
 import { readConnectionSecrets } from "./secrets.server";
 import { getOAuthEndpoints } from "./templates";
 
@@ -38,12 +47,6 @@ function randomBase64Url(bytes = 32): string {
 	const value = new Uint8Array(bytes);
 	crypto.getRandomValues(value);
 	return Buffer.from(value).toString("base64url");
-}
-
-async function pkceChallenge(verifier: string): Promise<string> {
-	const bytes = new TextEncoder().encode(verifier);
-	const digest = await crypto.subtle.digest("SHA-256", bytes);
-	return Buffer.from(digest).toString("base64url");
 }
 
 function configString(config: unknown, key: string): string | undefined {
@@ -70,10 +73,21 @@ function normalisePublicOrigin(value: string | null): string {
 	return url.origin;
 }
 
-function validateOAuthEndpoint(value: string, label: string): string {
+async function validateOAuthEndpoint(
+	value: string,
+	label: string,
+	allowPrivateNetwork = false,
+): Promise<string> {
 	try {
-		return validateUpstreamUrl(value, false).toString();
-	} catch {
+		return (
+			await validateOutboundUpstreamUrl(value, allowPrivateNetwork)
+		).toString();
+	} catch (error) {
+		// Preserve the system policy error so callers can localize and explain
+		// why an otherwise valid endpoint was blocked.
+		if (error instanceof GatewayError) {
+			throw error;
+		}
 		throw new GatewayError(
 			400,
 			"INVALID_OAUTH_ENDPOINT",
@@ -87,9 +101,21 @@ async function resolveOAuthEndpoints(
 	config: unknown,
 	secrets: ReadonlyMap<string, string>,
 ): Promise<OAuthEndpoints> {
+	const allowPrivateNetwork = await getAllowPrivateNetwork();
 	const predefined = getOAuthEndpoints(templateSlug);
 	if (predefined) {
-		return predefined;
+		return {
+			authorizationUrl: await validateOAuthEndpoint(
+				predefined.authorizationUrl,
+				"Authorization URL",
+				allowPrivateNetwork,
+			),
+			tokenUrl: await validateOAuthEndpoint(
+				predefined.tokenUrl,
+				"Token URL",
+				allowPrivateNetwork,
+			),
+		};
 	}
 	if (templateSlug === "generic_oauth2") {
 		const authorizationUrl = configString(config, "authorization_url");
@@ -102,15 +128,20 @@ async function resolveOAuthEndpoints(
 			);
 		}
 		return {
-			authorizationUrl: validateOAuthEndpoint(
+			authorizationUrl: await validateOAuthEndpoint(
 				authorizationUrl,
 				"Authorization URL",
+				allowPrivateNetwork,
 			),
-			tokenUrl: validateOAuthEndpoint(tokenUrl, "Token URL"),
+			tokenUrl: await validateOAuthEndpoint(
+				tokenUrl,
+				"Token URL",
+				allowPrivateNetwork,
+			),
 		};
 	}
 	if (templateSlug === "generic_oidc") {
-		const issuer = secrets.get("issuer");
+		const issuer = configString(config, "issuer") ?? secrets.get("issuer");
 		if (!issuer) {
 			throw new GatewayError(
 				400,
@@ -118,14 +149,20 @@ async function resolveOAuthEndpoints(
 				"An OIDC issuer is required.",
 			);
 		}
-		const issuerUrl = validateUpstreamUrl(issuer, false);
+		const issuerUrl = await validateOutboundUpstreamUrl(
+			issuer,
+			allowPrivateNetwork,
+		);
 		const discoveryUrl = new URL(
 			".well-known/openid-configuration",
 			`${issuerUrl.toString().replace(/\/$/, "")}/`,
 		);
+		const safeDiscoveryUrl = await validateConfiguredUpstreamUrl(
+			discoveryUrl.toString(),
+		);
 		let response: Response;
 		try {
-			response = await fetch(discoveryUrl, {
+			response = await fetch(safeDiscoveryUrl, {
 				headers: { accept: "application/json" },
 				redirect: "error",
 			});
@@ -143,30 +180,27 @@ async function resolveOAuthEndpoints(
 				"The OIDC discovery document returned an error.",
 			);
 		}
-		const document: unknown = await response.json().catch(() => null);
-		if (!document || typeof document !== "object" || Array.isArray(document)) {
+		const document = parseOidcDiscoveryDocument(
+			await response.json().catch(() => null),
+		);
+		if (!document) {
 			throw new GatewayError(
 				502,
 				"OIDC_DISCOVERY_FAILED",
 				"The OIDC discovery document is invalid.",
 			);
 		}
-		const authorizationUrl = (document as Record<string, unknown>)
-			.authorization_endpoint;
-		const tokenUrl = (document as Record<string, unknown>).token_endpoint;
-		if (typeof authorizationUrl !== "string" || typeof tokenUrl !== "string") {
-			throw new GatewayError(
-				502,
-				"OIDC_DISCOVERY_FAILED",
-				"The OIDC discovery document has no usable OAuth endpoints.",
-			);
-		}
 		return {
-			authorizationUrl: validateOAuthEndpoint(
-				authorizationUrl,
+			authorizationUrl: await validateOAuthEndpoint(
+				document.authorizationEndpoint,
 				"OIDC authorization endpoint",
+				allowPrivateNetwork,
 			),
-			tokenUrl: validateOAuthEndpoint(tokenUrl, "OIDC token endpoint"),
+			tokenUrl: await validateOAuthEndpoint(
+				document.tokenEndpoint,
+				"OIDC token endpoint",
+				allowPrivateNetwork,
+			),
 		};
 	}
 	throw new GatewayError(
@@ -203,9 +237,12 @@ async function requestToken(
 	tokenUrl: string,
 	body: URLSearchParams,
 ): Promise<TokenResponse> {
+	// Validate immediately before every outbound token request so a runtime
+	// policy change takes effect without restarting the process.
+	const safeTokenUrl = await validateConfiguredUpstreamUrl(tokenUrl);
 	let response: Response;
 	try {
-		response = await fetch(tokenUrl, {
+		response = await fetch(safeTokenUrl, {
 			method: "POST",
 			headers: {
 				accept: "application/json",
@@ -356,13 +393,15 @@ export async function beginOAuthConnection(
 			"Connection not found.",
 		);
 	}
+	await validateConfiguredUpstreamUrl(instance.baseUrl);
 	const secrets = await readConnectionSecrets(userId, instance.id);
 	const endpoints = await resolveOAuthEndpoints(
 		instance.templateSlug,
 		instance.config,
 		secrets,
 	);
-	const clientId = secrets.get("client_id");
+	const clientId =
+		configString(instance.config, "client_id") ?? secrets.get("client_id");
 	if (!clientId) {
 		throw new GatewayError(
 			400,
@@ -379,7 +418,7 @@ export async function beginOAuthConnection(
 		normalisePublicOrigin(settings?.publicOrigin ?? null),
 	);
 	const state = randomBase64Url();
-	const verifier = randomBase64Url(48);
+	const verifier = createPkceVerifier();
 	const now = new Date();
 	await db.transaction(async (tx) => {
 		await tx.insert(oauthStates).values({
@@ -410,7 +449,10 @@ export async function beginOAuthConnection(
 	authorize.searchParams.set("redirect_uri", callback);
 	authorize.searchParams.set("response_type", "code");
 	authorize.searchParams.set("state", state);
-	authorize.searchParams.set("code_challenge", await pkceChallenge(verifier));
+	authorize.searchParams.set(
+		"code_challenge",
+		await createPkceChallenge(verifier),
+	);
 	authorize.searchParams.set("code_challenge_method", "S256");
 	const scopes = configString(instance.config, "scopes");
 	if (scopes) {
@@ -477,6 +519,7 @@ export async function finishOAuthConnection(callback: {
 			"The OAuth connection no longer exists.",
 		);
 	}
+	await validateConfiguredUpstreamUrl(instance.baseUrl);
 	const secrets = await readConnectionSecrets(record.userId, record.instanceId);
 	const [settings] = await db
 		.select()
@@ -484,7 +527,10 @@ export async function finishOAuthConnection(callback: {
 		.where(eq(appSettings.id, "primary"))
 		.limit(1);
 	const body = new URLSearchParams({
-		client_id: secrets.get("client_id") ?? "",
+		client_id:
+			configString(instance.config, "client_id") ??
+			secrets.get("client_id") ??
+			"",
 		client_secret: secrets.get("client_secret") ?? "",
 		code,
 		code_verifier: await decryptSecret(
@@ -546,12 +592,16 @@ export async function connectClientCredentials(
 			"This connection is not configured for client credentials.",
 		);
 	}
+	await validateConfiguredUpstreamUrl(instance.baseUrl);
 	const secrets = await readConnectionSecrets(userId, instanceId);
 	const tokenUrl = (
 		await resolveOAuthEndpoints(instance.templateSlug, instance.config, secrets)
 	).tokenUrl;
 	const body = new URLSearchParams({
-		client_id: secrets.get("client_id") ?? "",
+		client_id:
+			configString(instance.config, "client_id") ??
+			secrets.get("client_id") ??
+			"",
 		client_secret: secrets.get("client_secret") ?? "",
 		grant_type: "client_credentials",
 	});
@@ -584,14 +634,18 @@ export async function refreshOAuthConnection(
 	if (!instance) {
 		return false;
 	}
-	const secrets = await readConnectionSecrets(userId, instanceId);
-	const refreshToken = secrets.get("refresh_token");
-	if (!refreshToken) {
-		return false;
-	}
 	try {
+		await validateConfiguredUpstreamUrl(instance.baseUrl);
+		const secrets = await readConnectionSecrets(userId, instanceId);
+		const refreshToken = secrets.get("refresh_token");
+		if (!refreshToken) {
+			return false;
+		}
 		const body = new URLSearchParams({
-			client_id: secrets.get("client_id") ?? "",
+			client_id:
+				configString(instance.config, "client_id") ??
+				secrets.get("client_id") ??
+				"",
 			client_secret: secrets.get("client_secret") ?? "",
 			grant_type: "refresh_token",
 			refresh_token: refreshToken,
@@ -613,7 +667,13 @@ export async function refreshOAuthConnection(
 			expectedRefreshLeaseUntil,
 		});
 		return persisted;
-	} catch {
+	} catch (error) {
+		if (
+			error instanceof GatewayError &&
+			error.code === "PRIVATE_UPSTREAM_BLOCKED"
+		) {
+			return false;
+		}
 		await getDb()
 			.update(providerInstances)
 			.set({

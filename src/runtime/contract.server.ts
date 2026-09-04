@@ -4,6 +4,9 @@ export type RuntimeKind = "bun" | "cloudflare";
 
 export type BackgroundTask = () => Promise<void>;
 
+/** Resolves every address a hostname can use for an outbound request. */
+export type HostnameResolver = (hostname: string) => Promise<readonly string[]>;
+
 export type DeferredWork = {
 	defer(task: BackgroundTask): void;
 	flush(): void;
@@ -12,6 +15,7 @@ export type DeferredWork = {
 export type RuntimeServices = {
 	readonly database: GatewayDatabase;
 	readonly kind: RuntimeKind;
+	readonly resolveHostname: HostnameResolver;
 	readonly rootSecret: Uint8Array;
 };
 

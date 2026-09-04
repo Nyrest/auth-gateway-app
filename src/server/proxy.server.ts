@@ -6,6 +6,7 @@ import { providerInstances, requestMetrics } from "#/db/schema";
 import {
 	asStringArray,
 	findActiveApiKey,
+	hasApiKeyPermission,
 	markApiKeyUsed,
 } from "#/features/api-keys/api-keys.server";
 import { readConnectionSecrets } from "#/features/connections/secrets.server";
@@ -13,10 +14,13 @@ import { readConnectionSecrets } from "#/features/connections/secrets.server";
 import { GatewayError } from "./errors";
 import { evaluateExpression } from "./expression.server";
 import { getRequestRuntime } from "./request-runtime.server";
-import { appendUpstreamPath, validateUpstreamUrl } from "./upstream-url.server";
+import {
+	appendUpstreamPath,
+	validateConfiguredUpstreamUrl,
+} from "./upstream-url.server";
 
 const maximumProxyBodyBytes = 100 * 1024 * 1024;
-const providerSlugPattern = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const providerSlugPattern = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 
 const blockedRequestHeaders = new Set([
 	"authorization",
@@ -127,25 +131,38 @@ function asHeaderEntries(
 	}
 	try {
 		const parsed: unknown = JSON.parse(value);
-		if (!Array.isArray(parsed)) {
-			return [];
+		if (Array.isArray(parsed)) {
+			return parsed.flatMap((entry) => {
+				if (
+					entry &&
+					typeof entry === "object" &&
+					"key" in entry &&
+					"value" in entry &&
+					typeof entry.key === "string" &&
+					typeof entry.value === "string"
+				) {
+					return [{ key: entry.key, value: entry.value }];
+				}
+				return [];
+			});
 		}
-		return parsed.flatMap((entry) => {
-			if (
-				entry &&
-				typeof entry === "object" &&
-				"key" in entry &&
-				"value" in entry &&
-				typeof entry.key === "string" &&
-				typeof entry.value === "string"
-			) {
-				return [{ key: entry.key, value: entry.value }];
-			}
-			return [];
-		});
 	} catch {
-		return [];
+		// Fall through to the human-friendly key: value format below.
 	}
+	return value
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.flatMap((line) => {
+			const separator = line.indexOf(":");
+			if (separator < 1) return [];
+			return [
+				{
+					key: line.slice(0, separator).trim(),
+					value: line.slice(separator + 1).trim(),
+				},
+			];
+		});
 }
 
 function isSafeInjectedHeader(name: string, value: string): boolean {
@@ -224,6 +241,7 @@ export function injectConnectionCredentials(
 	templateSlug: string,
 	path: string,
 	secrets: Map<string, string>,
+	config?: Readonly<Record<string, unknown>>,
 ): void {
 	if (templateSlug === "generic_basic") {
 		headers.set(
@@ -257,9 +275,18 @@ export function injectConnectionCredentials(
 		templateSlug === "github_oauth" &&
 		/^applications\/[^/]+(?:\/|$)/.test(path)
 	) {
-		const clientId = requiredSecret(secrets, "client_id");
+		const legacyClientId = secrets.get("client_id");
+		const publicClientId =
+			typeof config?.client_id === "string" ? config.client_id : legacyClientId;
+		if (!publicClientId) {
+			throw new GatewayError(
+				503,
+				"CONNECTION_INCOMPLETE",
+				"The selected connection is missing client_id.",
+			);
+		}
 		const pathClientId = path.split("/")[1];
-		if (pathClientId !== clientId) {
+		if (pathClientId !== publicClientId) {
 			throw new GatewayError(
 				400,
 				"GITHUB_CLIENT_MISMATCH",
@@ -268,7 +295,10 @@ export function injectConnectionCredentials(
 		}
 		headers.set(
 			"authorization",
-			basicAuthorization(clientId, requiredSecret(secrets, "client_secret")),
+			basicAuthorization(
+				publicClientId,
+				requiredSecret(secrets, "client_secret"),
+			),
 		);
 	} else if (secrets.get("access_token")) {
 		headers.set(
@@ -284,8 +314,11 @@ export function injectConnectionCredentials(
 }
 
 async function recordMetric(input: {
+	readonly apiKeyId: string;
 	readonly instanceId: string;
 	readonly latencyMs: number;
+	readonly method: string;
+	readonly path: string;
 	readonly providerSlug: string;
 	readonly sourceIp: string | null;
 	readonly statusCode: number;
@@ -295,7 +328,10 @@ async function recordMetric(input: {
 		id: uuidv7(),
 		userId: input.userId,
 		instanceId: input.instanceId,
+		apiKeyId: input.apiKeyId,
 		providerSlug: input.providerSlug,
+		method: input.method,
+		path: input.path,
 		statusCode: input.statusCode,
 		latencyMs: input.latencyMs,
 		sourceIp: input.sourceIp,
@@ -323,10 +359,22 @@ export async function proxyRequest(
 			"The proxy API key is invalid, expired, or revoked.",
 		);
 	}
+	if (!hasApiKeyPermission(key, "proxy")) {
+		throw new GatewayError(
+			403,
+			"API_KEY_PERMISSION_DENIED",
+			"This API key does not have proxy permission.",
+		);
+	}
 
 	const instanceIds = asStringArray(key.instanceIds);
 	const providerSlugs = asStringArray(key.providerSlugs);
-	if (providerSlugs.length > 0 && !providerSlugs.includes(providerSlug)) {
+	const providerScopeMode =
+		key.providerScopeMode === "selected" ? "selected" : "all";
+	if (
+		(providerScopeMode === "selected" || providerSlugs.length > 0) &&
+		!providerSlugs.includes(providerSlug)
+	) {
 		throw new GatewayError(
 			403,
 			"PROVIDER_NOT_ALLOWED",
@@ -365,15 +413,14 @@ export async function proxyRequest(
 		instance.templateSlug,
 		path,
 		secrets,
+		instance.config &&
+			typeof instance.config === "object" &&
+			!Array.isArray(instance.config)
+			? (instance.config as Record<string, unknown>)
+			: undefined,
 	);
-	const target = appendUpstreamPath(
-		validateUpstreamUrl(
-			instance.baseUrl,
-			instance.allowPrivateNetwork,
-		).toString(),
-		path,
-		new URL(request.url).search,
-	);
+	const baseUrl = await validateConfiguredUpstreamUrl(instance.baseUrl);
+	const target = appendUpstreamPath(baseUrl, path, new URL(request.url).search);
 	const canHaveBody = request.method !== "GET" && request.method !== "HEAD";
 	const body = canHaveBody ? limitedRequestBody(request) : undefined;
 	let upstream: Response;
@@ -388,8 +435,11 @@ export async function proxyRequest(
 	} catch {
 		getRequestRuntime().deferred.defer(() =>
 			recordMetric({
+				apiKeyId: key.id,
 				instanceId: instance.id,
 				latencyMs: Math.round(performance.now() - startedAt),
+				method: request.method,
+				path,
 				providerSlug,
 				sourceIp: getRequestRuntime().clientIp,
 				statusCode: 502,
@@ -407,8 +457,11 @@ export async function proxyRequest(
 		await Promise.all([
 			markApiKeyUsed(key.id),
 			recordMetric({
+				apiKeyId: key.id,
 				instanceId: instance.id,
 				latencyMs: Math.round(performance.now() - startedAt),
+				method: request.method,
+				path,
 				providerSlug,
 				sourceIp: getRequestRuntime().clientIp,
 				statusCode: upstream.status,

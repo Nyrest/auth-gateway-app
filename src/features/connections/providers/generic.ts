@@ -1,0 +1,132 @@
+import { baseUrlField, stringField, testFields } from "./common";
+import { createOidcProvider } from "./oidc";
+import type { ProviderDefinition } from "./types";
+
+export const genericOidc = createOidcProvider({
+	slug: "generic_oidc",
+	nameKey: "providers_generic_oidc_name",
+	descriptionKey: "providers_generic_oidc_description",
+	category: "generic",
+	defaultBaseUrl: "https://api.example.com",
+});
+
+export const genericOauth2: ProviderDefinition = {
+	slug: "generic_oauth2",
+	category: "generic",
+	icon: { kind: "generic" },
+	defaultBaseUrl: "https://api.example.com",
+	protocol: "oauth2",
+	capabilities: { connect: true, test: true, refresh: true },
+	metadata: {
+		nameKey: "providers_generic_oauth2_name",
+		descriptionKey: "providers_generic_oauth2_description",
+	},
+	fields: [
+		baseUrlField,
+		stringField("client_id", "provider_field_client_id", {
+			required: true,
+			secret: false,
+		}),
+		stringField("client_secret", "provider_field_client_secret", {
+			required: true,
+			secret: true,
+		}),
+		stringField("authorization_url", "provider_field_authorization_url", {
+			required: false,
+			secret: false,
+			outboundUrl: "absolute",
+		}),
+		stringField("token_url", "provider_field_token_url", {
+			required: false,
+			secret: false,
+			outboundUrl: "absolute",
+		}),
+		stringField("scopes", "provider_field_scopes", {
+			required: false,
+			secret: false,
+		}),
+		{
+			key: "grant_type",
+			labelKey: "provider_field_grant_type",
+			descriptionKey: "provider_field_grant_type_description",
+			type: "single_select",
+			required: false,
+			secret: false,
+			defaultValue: "authorization_code",
+			options: ["authorization_code", "client_credentials"],
+		},
+		...testFields,
+	],
+};
+
+export const genericBasic: ProviderDefinition = {
+	slug: "generic_basic",
+	category: "generic",
+	icon: { kind: "generic" },
+	defaultBaseUrl: "https://api.example.com",
+	protocol: "basic",
+	capabilities: { test: true },
+	metadata: {
+		nameKey: "providers_generic_basic_name",
+		descriptionKey: "providers_generic_basic_description",
+	},
+	fields: [
+		baseUrlField,
+		stringField("username", "provider_field_username", {
+			required: true,
+			secret: true,
+		}),
+		stringField("password", "provider_field_password", {
+			required: true,
+			secret: true,
+		}),
+		...testFields,
+	],
+};
+
+export const genericBearer: ProviderDefinition = {
+	slug: "generic_bearer",
+	category: "generic",
+	icon: { kind: "generic" },
+	defaultBaseUrl: "https://api.example.com",
+	protocol: "bearer",
+	capabilities: { test: true },
+	metadata: {
+		nameKey: "providers_generic_bearer_name",
+		descriptionKey: "providers_generic_bearer_description",
+	},
+	fields: [
+		baseUrlField,
+		stringField("token", "provider_field_token", {
+			required: true,
+			secret: true,
+		}),
+		...testFields,
+	],
+};
+
+export const genericHeaders: ProviderDefinition = {
+	slug: "generic_headers",
+	category: "generic",
+	icon: { kind: "generic" },
+	defaultBaseUrl: "https://api.example.com",
+	protocol: "headers",
+	capabilities: { test: true },
+	metadata: {
+		nameKey: "providers_generic_headers_name",
+		descriptionKey: "providers_generic_headers_description",
+	},
+	fields: [
+		baseUrlField,
+		{
+			key: "headers",
+			labelKey: "provider_field_headers",
+			descriptionKey: "provider_field_headers_description",
+			type: "key_value",
+			required: false,
+			secret: true,
+			defaultValue: [],
+		},
+		...testFields,
+	],
+};

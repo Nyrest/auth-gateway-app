@@ -55,6 +55,10 @@ export const appSettings = pgTable("app_settings", {
 		onDelete: "set null",
 	}),
 	publicOrigin: text("public_origin"),
+	/** System-wide SSRF policy. Disabled by default. */
+	allowPrivateNetwork: boolean("allow_private_network")
+		.notNull()
+		.default(false),
 	metricsCleanupDueAt: timestamp("metrics_cleanup_due_at", {
 		withTimezone: true,
 	}),
@@ -97,9 +101,6 @@ export const providerInstances = pgTable(
 		status: connectionStatus("status").notNull().default("draft"),
 		health: healthStatus("health").notNull().default("unknown"),
 		enabled: boolean("enabled").notNull().default(true),
-		allowPrivateNetwork: boolean("allow_private_network")
-			.notNull()
-			.default(false),
 		healthIntervalMinutes: integer("health_interval_minutes"),
 		accessTokenExpiresAt: timestamp("access_token_expires_at", {
 			withTimezone: true,
@@ -184,6 +185,10 @@ export const apiKeys = pgTable(
 		label: text("label").notNull(),
 		prefix: text("prefix").notNull(),
 		digest: text("digest").notNull(),
+		permissions: jsonb("permissions")
+			.notNull()
+			.default(sql`'["proxy"]'::jsonb`),
+		providerScopeMode: text("provider_scope_mode").notNull().default("all"),
 		providerSlugs: jsonb("provider_slugs").notNull().default(sql`'[]'::jsonb`),
 		instanceIds: jsonb("instance_ids").notNull().default(sql`'[]'::jsonb`),
 		expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -207,6 +212,7 @@ export const auditEvents = pgTable(
 		action: text("action").notNull(),
 		resourceType: text("resource_type").notNull(),
 		resourceId: text("resource_id"),
+		result: text("result").notNull().default("success"),
 		metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
 		occurredAt: timestamp("occurred_at", { withTimezone: true })
 			.notNull()
@@ -214,6 +220,11 @@ export const auditEvents = pgTable(
 	},
 	(table) => [
 		index("audit_event_user_occurred_idx").on(table.userId, table.occurredAt),
+		index("audit_event_user_result_occurred_idx").on(
+			table.userId,
+			table.result,
+			table.occurredAt,
+		),
 	],
 );
 
@@ -227,7 +238,12 @@ export const requestMetrics = pgTable(
 		instanceId: uuid("instance_id").references(() => providerInstances.id, {
 			onDelete: "set null",
 		}),
+		apiKeyId: uuid("api_key_id").references(() => apiKeys.id, {
+			onDelete: "set null",
+		}),
 		providerSlug: text("provider_slug").notNull(),
+		method: text("method").notNull().default("GET"),
+		path: text("path").notNull().default("/"),
 		statusCode: integer("status_code").notNull(),
 		latencyMs: integer("latency_ms").notNull(),
 		sourceIp: text("source_ip"),
@@ -238,6 +254,16 @@ export const requestMetrics = pgTable(
 	(table) => [
 		index("request_metric_user_occurred_idx").on(
 			table.userId,
+			table.occurredAt,
+		),
+		index("request_metric_user_provider_occurred_idx").on(
+			table.userId,
+			table.providerSlug,
+			table.occurredAt,
+		),
+		index("request_metric_user_status_occurred_idx").on(
+			table.userId,
+			table.statusCode,
 			table.occurredAt,
 		),
 	],

@@ -9,39 +9,33 @@ import {
 	CardHeader,
 	CardTitle,
 } from "#/components/ui/card";
-
-const cards = [
-	{
-		description:
-			"Configure secure upstream accounts and share pools deliberately.",
-		icon: PlugZap,
-		title: "Connections",
-	},
-	{
-		description:
-			"Issue and revoke proxy-only credentials without persisting plaintext keys.",
-		icon: KeyRound,
-		title: "API Keys",
-	},
-	{
-		description:
-			"Review gateway mutations and recent proxy activity without exposing sensitive payloads.",
-		icon: Activity,
-		title: "Activity",
-	},
-] as const;
+import { m } from "#/paraglide/messages.js";
 
 export const Route = createFileRoute("/_authenticated/")({
 	component: OverviewPage,
 });
 
 function OverviewPage() {
+	const cards = [
+		{
+			description: m.overview_connections_description(),
+			icon: PlugZap,
+			title: m.connections(),
+		},
+		{
+			description: m.overview_api_keys_description(),
+			icon: KeyRound,
+			title: m.api_keys(),
+		},
+		{
+			description: m.overview_activity_description(),
+			icon: Activity,
+			title: m.overview_activity(),
+		},
+	] as const;
 	return (
 		<>
-			<PageHeader
-				description="A security-focused control plane for managed upstream credentials and streaming API access."
-				title="Overview"
-			/>
+			<PageHeader description={m.overview_description()} title={m.overview()} />
 			<div className="grid gap-4 md:grid-cols-3">
 				{cards.map(({ description, icon: Icon, title }) => (
 					<Card key={title} className="shadow-sm">

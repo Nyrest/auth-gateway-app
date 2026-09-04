@@ -2,6 +2,7 @@ import application from "@tanstack/react-start/server-entry";
 import { createDatabase } from "#/db/index.server";
 import type { RuntimeServices } from "#/runtime/contract.server";
 import { decodeRootSecret } from "#/runtime/secret.server";
+import { resolveHostnameOverHttps } from "#/server/hostname-resolution.server";
 import { runScheduledMaintenance } from "#/server/scheduler.server";
 import { handleApplicationRequest } from "#/server-runtime.server";
 
@@ -18,6 +19,7 @@ function createServices(bindings: Bindings): RuntimeServices {
 	return {
 		database: createDatabase(bindings.HYPERDRIVE.connectionString, 2),
 		kind: "cloudflare",
+		resolveHostname: resolveHostnameOverHttps,
 		rootSecret: decodeRootSecret(bindings.AUTH_GATEWAY_SECRET),
 	};
 }

@@ -29,6 +29,13 @@
       "when": 1788148125312,
       "tag": "0003_open_korath",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788157877700,
+      "tag": "0004_rare_namor",
+      "breakpoints": true
     }
   ]
 }

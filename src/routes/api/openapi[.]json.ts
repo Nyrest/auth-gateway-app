@@ -34,7 +34,7 @@ const specification = {
 					required: true,
 					schema: {
 						maxLength: 63,
-						pattern: "^[a-z0-9][a-z0-9-]{0,62}$",
+						pattern: "^[a-z0-9][a-z0-9_-]{0,62}$",
 						type: "string",
 					},
 				},

@@ -42,11 +42,12 @@ function LoginPage() {
 		try {
 			const result = await authClient.signIn.email({ email, password });
 			if (result.error) {
-				throw new Error(m.invalid_email_or_password());
+				setError(m.invalid_email_or_password());
+				return;
 			}
 			await navigate({ to: "/" });
-		} catch (caught) {
-			setError(caught instanceof Error ? caught.message : m.sign_in_failed());
+		} catch {
+			setError(m.sign_in_failed());
 		} finally {
 			setSubmitting(false);
 		}

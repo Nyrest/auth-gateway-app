@@ -9,11 +9,14 @@ import { getRequestRuntime } from "./request-runtime.server";
 type AuditMetadata = Record<string, boolean | number | string | null>;
 type AuditEvent = typeof auditEvents.$inferInsert;
 
+export type AuditResult = "success" | "failure" | "invalid" | "degraded";
+
 const batches = new WeakMap<DeferredWork, AuditEvent[]>();
 
 export function recordAuditEvent(input: {
 	readonly action: string;
 	readonly metadata?: AuditMetadata;
+	readonly result?: AuditResult;
 	readonly resourceId?: string;
 	readonly resourceType: string;
 	readonly userId: string;
@@ -24,6 +27,7 @@ export function recordAuditEvent(input: {
 		action: input.action,
 		resourceType: input.resourceType,
 		resourceId: input.resourceId ?? null,
+		result: input.result ?? "success",
 		metadata: input.metadata ?? {},
 		occurredAt: new Date(),
 	};
