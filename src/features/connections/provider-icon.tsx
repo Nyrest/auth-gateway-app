@@ -1,6 +1,3 @@
-import Github from "@thesvg/react/github";
-import Google from "@thesvg/react/google";
-import Microsoft from "@thesvg/react/microsoft";
 import {
 	Cable,
 	Fingerprint,
@@ -8,10 +5,12 @@ import {
 	ListTree,
 	UserRound,
 } from "lucide-react";
+import { createElement, Fragment } from "react";
 
+import { getProviderDefinition } from "./providers/registry";
 import type {
-	ProviderIconDefinition,
 	ProviderProtocol,
+	ProviderRuntimeIconDefinition,
 } from "./providers/types";
 
 const genericIcons: Record<ProviderProtocol, typeof Cable> = {
@@ -22,44 +21,48 @@ const genericIcons: Record<ProviderProtocol, typeof Cable> = {
 	oidc: Fingerprint,
 };
 
+function renderProviderIcon(
+	icon: ProviderRuntimeIconDefinition,
+	className?: string,
+) {
+	if (icon.kind !== "brand" || !icon.component) return null;
+	if (!icon.light || !icon.dark) {
+		return createElement(icon.component, {
+			"aria-hidden": true,
+			className,
+			variant: "default",
+		});
+	}
+
+	return createElement(
+		Fragment,
+		null,
+		createElement(icon.light, {
+			"aria-hidden": true,
+			className: [className, "dark:hidden"].filter(Boolean).join(" "),
+			variant: "light",
+		}),
+		createElement(icon.dark, {
+			"aria-hidden": true,
+			className: [className, "hidden dark:block"].filter(Boolean).join(" "),
+			variant: "dark",
+		}),
+	);
+}
+
 export function ProviderIcon({
-	definition,
+	templateSlug,
 	protocol,
 	className,
 }: {
-	readonly definition: ProviderIconDefinition;
+	readonly templateSlug: string;
 	readonly protocol: ProviderProtocol;
 	readonly className?: string;
 }) {
-	if (definition.kind === "generic") {
-		const Icon = genericIcons[protocol] ?? Cable;
-		return <Icon aria-hidden="true" className={className} />;
-	}
+	const icon = getProviderDefinition(templateSlug)?.icon;
+	const renderedIcon = icon ? renderProviderIcon(icon, className) : null;
+	if (renderedIcon) return renderedIcon;
 
-	const iconProps = { "aria-hidden": true, className } as const;
-	switch (definition.slug) {
-		case "google":
-			return <Google {...iconProps} />;
-		case "microsoft":
-			return <Microsoft {...iconProps} />;
-		case "github":
-			return (
-				<>
-					<Github
-						{...iconProps}
-						className={`${className ?? ""} dark:hidden`}
-						variant="light"
-					/>
-					<Github
-						{...iconProps}
-						className={`${className ?? ""} hidden dark:block`}
-						variant="dark"
-					/>
-				</>
-			);
-		default: {
-			const Icon = genericIcons[protocol] ?? Cable;
-			return <Icon aria-hidden="true" className={className} />;
-		}
-	}
+	const Icon = genericIcons[protocol] ?? Cable;
+	return <Icon aria-hidden="true" className={className} />;
 }

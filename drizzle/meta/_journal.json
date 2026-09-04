@@ -36,6 +36,20 @@
       "when": 1788157877700,
       "tag": "0004_rare_namor",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788507521535,
+      "tag": "0005_famous_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788519179941,
+      "tag": "0006_violet_sinister_six",
+      "breakpoints": true
     }
   ]
 }

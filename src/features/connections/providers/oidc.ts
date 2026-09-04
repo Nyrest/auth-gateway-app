@@ -2,7 +2,7 @@ import { baseUrlField, stringField, testFields } from "./common";
 import type {
 	ProviderDefinition,
 	ProviderField,
-	ProviderIconDefinition,
+	ProviderRuntimeIconDefinition,
 } from "./types";
 
 export type OidcDiscoveryDocument = {
@@ -96,7 +96,7 @@ export function createOidcProvider(input: {
 	readonly nameKey: ProviderDefinition["metadata"]["nameKey"];
 	readonly descriptionKey: ProviderDefinition["metadata"]["descriptionKey"];
 	readonly category: "generic" | "predefined";
-	readonly icon?: ProviderIconDefinition;
+	readonly icon?: ProviderRuntimeIconDefinition;
 	readonly defaultBaseUrl: string;
 	readonly fields?: readonly ProviderField[];
 	/** Fixed endpoint OAuth providers can opt out of the OIDC protocol label. */
@@ -105,6 +105,7 @@ export function createOidcProvider(input: {
 		readonly authorizationUrl: string;
 		readonly tokenUrl: string;
 	};
+	readonly defaultScopes?: string;
 }): ProviderDefinition {
 	return {
 		slug: input.slug,
@@ -119,5 +120,6 @@ export function createOidcProvider(input: {
 			descriptionKey: input.descriptionKey,
 		},
 		...(input.endpoints ? { oauthEndpoints: input.endpoints } : {}),
+		...(input.defaultScopes ? { defaultScopes: input.defaultScopes } : {}),
 	};
 }

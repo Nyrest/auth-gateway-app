@@ -20,6 +20,7 @@ import {
 	useState,
 } from "react";
 
+import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import {
 	Dialog,
@@ -183,6 +184,15 @@ function formatDateTime(value: Date | string): string {
 		dateStyle: "medium",
 		timeStyle: "short",
 	}).format(new Date(value));
+}
+
+function templateBadges(template: Template): readonly string[] {
+	if (template.category !== "predefined") return [];
+
+	return [
+		template.capabilities.connect ? "OAuth" : null,
+		template.mcp ? "MCP" : null,
+	].filter((badge): badge is string => badge !== null);
 }
 
 export function TemplatePicker({
@@ -407,13 +417,24 @@ function TemplateCard({
 			<span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-primary">
 				<ProviderIcon
 					className="size-5"
-					definition={template.icon}
+					templateSlug={template.slug}
 					protocol={template.protocol}
 				/>
 			</span>
 			<span className="min-w-0 flex-1">
-				<span className="block truncate font-medium">
-					{providerName(template)}
+				<span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+					<span className="min-w-0 truncate font-medium">
+						{providerName(template)}
+					</span>
+					{templateBadges(template).map((badge) => (
+						<Badge
+							className="h-4 px-1.5 text-[10px]"
+							key={badge}
+							variant="outline"
+						>
+							{badge}
+						</Badge>
+					))}
 				</span>
 				{!compact ? (
 					<span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">
@@ -622,7 +643,7 @@ export function ConnectionConfigDialog({
 						<span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-primary">
 							<ProviderIcon
 								className="size-5"
-								definition={activeTemplate.icon}
+								templateSlug={activeTemplate.slug}
 								protocol={activeTemplate.protocol}
 							/>
 						</span>
@@ -754,7 +775,13 @@ export function ConnectionConfigDialog({
 					</div>
 					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 						{template.fields
-							.filter((field) => field.key !== "base_url")
+							.filter(
+								(field) =>
+									field.key !== "base_url" &&
+									(!field.visibleWhen ||
+										config[field.visibleWhen.field] ===
+											field.visibleWhen.equals),
+							)
 							.map((field) => (
 								<ProviderField
 									field={field}

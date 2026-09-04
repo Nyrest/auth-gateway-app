@@ -39,6 +39,7 @@ export const healthStatus = pgEnum("health_status", [
 	"healthy",
 	"unhealthy",
 ]);
+export const apiKeyKind = pgEnum("api_key_kind", ["user", "playground"]);
 
 const timestampColumns = {
 	createdAt: timestamp("created_at", { withTimezone: true })
@@ -98,6 +99,7 @@ export const providerInstances = pgTable(
 		name: text("name").notNull(),
 		baseUrl: text("base_url").notNull(),
 		config: jsonb("config").notNull().default(sql`'{}'::jsonb`),
+		providerState: jsonb("provider_state").notNull().default(sql`'{}'::jsonb`),
 		status: connectionStatus("status").notNull().default("draft"),
 		health: healthStatus("health").notNull().default("unknown"),
 		enabled: boolean("enabled").notNull().default(true),
@@ -185,6 +187,7 @@ export const apiKeys = pgTable(
 		label: text("label").notNull(),
 		prefix: text("prefix").notNull(),
 		digest: text("digest").notNull(),
+		keyKind: apiKeyKind("key_kind").notNull().default("user"),
 		permissions: jsonb("permissions")
 			.notNull()
 			.default(sql`'["proxy"]'::jsonb`),
@@ -198,6 +201,9 @@ export const apiKeys = pgTable(
 	},
 	(table) => [
 		uniqueIndex("api_key_digest_idx").on(table.digest),
+		uniqueIndex("api_key_user_playground_idx")
+			.on(table.userId)
+			.where(sql`${table.keyKind} = 'playground'`),
 		index("api_key_user_id_idx").on(table.userId),
 	],
 );

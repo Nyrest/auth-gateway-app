@@ -14,14 +14,14 @@ export type {
 	ProviderTemplate,
 } from "./providers/types";
 
-/** Keep server functions serializable: runtime hooks never cross the boundary. */
+/** Keep server functions serializable: runtime hooks and icon components never cross the boundary. */
 export function toProviderTemplate(
 	provider: (typeof providerRegistry)[number],
 ): ProviderTemplate {
 	return {
 		slug: provider.slug,
 		category: provider.category,
-		icon: provider.icon,
+		icon: { kind: provider.icon.kind },
 		defaultBaseUrl: provider.defaultBaseUrl,
 		protocol: provider.protocol,
 		fields: provider.fields,
@@ -30,6 +30,15 @@ export function toProviderTemplate(
 		...(provider.oauthEndpoints
 			? { oauthEndpoints: provider.oauthEndpoints }
 			: {}),
+		...(provider.defaultScopes
+			? { defaultScopes: provider.defaultScopes }
+			: {}),
+		...(provider.auth ? { auth: provider.auth } : {}),
+		...(provider.fixedHeaders ? { fixedHeaders: provider.fixedHeaders } : {}),
+		...(provider.fixedQuery ? { fixedQuery: provider.fixedQuery } : {}),
+		...(provider.pathPrefix ? { pathPrefix: provider.pathPrefix } : {}),
+		...(provider.mcp ? { mcp: provider.mcp } : {}),
+		...(provider.verification ? { verification: provider.verification } : {}),
 	};
 }
 

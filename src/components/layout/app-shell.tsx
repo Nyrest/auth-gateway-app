@@ -6,6 +6,7 @@ import {
 	KeyRound,
 	LayoutDashboard,
 	LogOut,
+	Play,
 	PlugZap,
 	Settings,
 	ShieldCheck,
@@ -22,6 +23,7 @@ import styles from "./app-shell.module.css";
 const navigation = [
 	{ icon: LayoutDashboard, label: () => m.overview(), to: "/" },
 	{ icon: PlugZap, label: () => m.connections(), to: "/connections" },
+	{ icon: Play, label: () => m.playground(), to: "/playground" },
 	{ icon: KeyRound, label: () => m.api_keys(), to: "/api-keys" },
 	{ icon: Activity, label: () => m.audit_log(), to: "/audit" },
 	{ icon: BarChart3, label: () => m.statistics(), to: "/statistics" },
@@ -136,14 +138,14 @@ export function PageHeader({
 	title,
 }: {
 	readonly actions?: ReactNode;
-	readonly description: string;
+	readonly description?: string;
 	readonly title: string;
 }) {
 	return (
 		<div className={styles.pageHeader}>
 			<div>
 				<h1>{title}</h1>
-				<p>{description}</p>
+				{description ? <p>{description}</p> : null}
 			</div>
 			{actions ? <div className={styles.pageActions}>{actions}</div> : null}
 		</div>

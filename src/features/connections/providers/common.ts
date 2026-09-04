@@ -40,6 +40,35 @@ export const testFields: readonly ProviderField[] = [
 	},
 ];
 
+export const mcpBaseFields: readonly ProviderField[] = [
+	stringField("mcp_server_url", "provider_field_mcp_server_url", {
+		required: true,
+		secret: false,
+		outboundUrl: "absolute",
+	}),
+	{
+		key: "transport",
+		labelKey: "provider_field_mcp_transport",
+		descriptionKey: "provider_field_mcp_transport_description",
+		type: "single_select",
+		required: true,
+		secret: false,
+		defaultValue: "streamable_http",
+		options: ["sse", "streamable_http"],
+	},
+	{
+		key: "session_mode",
+		labelKey: "provider_field_mcp_session_mode",
+		descriptionKey: "provider_field_mcp_session_mode_description",
+		type: "single_select",
+		required: true,
+		secret: false,
+		defaultValue: "stateless",
+		options: ["stateless", "stateful"],
+		visibleWhen: { field: "transport", equals: "streamable_http" },
+	},
+];
+
 export function stringField(
 	key: string,
 	labelKey: ProviderField["labelKey"],

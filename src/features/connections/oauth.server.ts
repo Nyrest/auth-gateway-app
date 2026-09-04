@@ -27,7 +27,7 @@ import {
 	parseOidcDiscoveryDocument,
 } from "./providers/oidc";
 import { readConnectionSecrets } from "./secrets.server";
-import { getOAuthEndpoints } from "./templates";
+import { getOAuthEndpoints, getProviderTemplate } from "./templates";
 
 type OAuthEndpoints = {
 	readonly authorizationUrl: string;
@@ -454,11 +454,45 @@ export async function beginOAuthConnection(
 		await createPkceChallenge(verifier),
 	);
 	authorize.searchParams.set("code_challenge_method", "S256");
-	const scopes = configString(instance.config, "scopes");
+	const scopes =
+		configString(instance.config, "scopes") ??
+		getProviderTemplate(instance.templateSlug)?.defaultScopes;
 	if (scopes) {
 		authorize.searchParams.set("scope", scopes);
 	}
+	if (getProviderTemplate(instance.templateSlug)?.mcp) {
+		authorize.searchParams.set("resource", instance.baseUrl);
+	}
 	return { authorizationUrl: authorize.toString() };
+}
+
+export async function getOAuthClientMetadata(
+	connectionId: string,
+): Promise<Record<string, unknown>> {
+	const [instance] = await getDb()
+		.select()
+		.from(providerInstances)
+		.where(eq(providerInstances.id, connectionId))
+		.limit(1);
+	if (!instance)
+		throw new GatewayError(
+			404,
+			"CONNECTION_NOT_FOUND",
+			"Connection not found.",
+		);
+	const [settings] = await getDb()
+		.select()
+		.from(appSettings)
+		.where(eq(appSettings.id, "primary"))
+		.limit(1);
+	const origin = normalisePublicOrigin(settings?.publicOrigin ?? null);
+	return {
+		client_name: "Auth Gateway MCP client",
+		redirect_uris: [publicCallback(origin)],
+		grant_types: ["authorization_code", "refresh_token"],
+		response_types: ["code"],
+		token_endpoint_auth_method: "none",
+	};
 }
 
 export async function finishOAuthConnection(callback: {
@@ -542,6 +576,9 @@ export async function finishOAuthConnection(callback: {
 			normalisePublicOrigin(settings?.publicOrigin ?? null),
 		),
 	});
+	if (getProviderTemplate(instance.templateSlug)?.mcp) {
+		body.set("resource", instance.baseUrl);
+	}
 	const token = await requestToken(
 		(
 			await resolveOAuthEndpoints(
@@ -605,7 +642,9 @@ export async function connectClientCredentials(
 		client_secret: secrets.get("client_secret") ?? "",
 		grant_type: "client_credentials",
 	});
-	const scopes = configString(instance.config, "scopes");
+	const scopes =
+		configString(instance.config, "scopes") ??
+		getProviderTemplate(instance.templateSlug)?.defaultScopes;
 	if (scopes) {
 		body.set("scope", scopes);
 	}
@@ -650,6 +689,9 @@ export async function refreshOAuthConnection(
 			grant_type: "refresh_token",
 			refresh_token: refreshToken,
 		});
+		if (getProviderTemplate(instance.templateSlug)?.mcp) {
+			body.set("resource", instance.baseUrl);
+		}
 		const token = await requestToken(
 			(
 				await resolveOAuthEndpoints(

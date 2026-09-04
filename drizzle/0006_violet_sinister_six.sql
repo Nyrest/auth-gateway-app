@@ -1,0 +1,1 @@
+ALTER TABLE "provider_instance" ADD COLUMN "provider_state" jsonb DEFAULT '{}'::jsonb NOT NULL;

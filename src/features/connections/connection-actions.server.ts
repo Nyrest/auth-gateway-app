@@ -3,7 +3,10 @@ import { getDb } from "#/db/index.server";
 import { providerInstances } from "#/db/schema";
 import { recordAuditEvent } from "#/server/audit.server";
 import { GatewayError } from "#/server/errors";
-import { injectConnectionCredentials } from "#/server/proxy.server";
+import {
+	applyProviderPolicy,
+	injectConnectionCredentials,
+} from "#/server/proxy.server";
 import {
 	appendUpstreamPath,
 	validateConfiguredUpstreamUrl,
@@ -76,6 +79,11 @@ export async function verifyConnection(
 		throw error;
 	}
 	const secrets = await readConnectionSecrets(userId, instanceId);
+	if (template?.mcp) {
+		const configuredMcpUrl = configString(instance.config, "mcp_server_url");
+		if (configuredMcpUrl)
+			baseUrl = await validateConfiguredUpstreamUrl(configuredMcpUrl);
+	}
 	if (template?.capabilities.connect && !secrets.get("access_token")) {
 		throw new GatewayError(
 			400,
@@ -89,53 +97,69 @@ export async function verifyConnection(
 	let testBody: string | undefined;
 	let credentialPath: string;
 	try {
-		switch (instance.templateSlug) {
-			case "github_oauth": {
-				// GitHub verifies OAuth credentials through the app-management
-				// endpoint, which requires Basic auth and the access token in JSON.
-				const clientId =
-					configString(instance.config, "client_id") ??
-					secrets.get("client_id");
-				const accessToken = secrets.get("access_token");
-				if (!clientId || !accessToken) {
-					throw new GatewayError(
-						400,
-						"CONNECTION_NOT_CONNECTED",
-						"Connect this OAuth connection before verifying it.",
-					);
-				}
-				credentialPath = `applications/${clientId}/token`;
-				target = appendUpstreamPath(baseUrl, credentialPath, "");
-				method = "POST";
-				testBody = JSON.stringify({ access_token: accessToken });
-				break;
+		if (template?.verification) {
+			const verification = template.verification;
+			const configured = verification.path;
+			if (/^https?:\/\//i.test(configured)) {
+				target = new URL(configured);
+				credentialPath = "";
+			} else {
+				target = appendUpstreamPath(baseUrl, configured.replace(/^\//, ""), "");
+				credentialPath = configured.replace(/^\//, "");
 			}
-			case "google_oauth":
-				target = new URL("https://openidconnect.googleapis.com/v1/userinfo");
-				method = "GET";
-				credentialPath = "";
-				break;
-			case "microsoft_entra_oauth":
-				target = new URL("https://graph.microsoft.com/oidc/userinfo");
-				method = "GET";
-				credentialPath = "";
-				break;
-			default:
-				target = new URL(configuredTestUrl ?? baseUrl.toString(), baseUrl);
-				method =
-					configString(instance.config, "test_method") === "POST"
-						? "POST"
-						: "GET";
-				testBody = configString(instance.config, "test_body");
-				credentialPath = target.pathname.replace(/^\//, "");
-				if (method === "GET" && testBody) {
-					throw new GatewayError(
-						400,
-						"INVALID_TEST_BODY",
-						"Test JSON body cannot be used with GET.",
-					);
+			method = verification.method;
+			testBody =
+				verification.body === undefined
+					? undefined
+					: JSON.stringify(verification.body);
+		} else
+			switch (instance.templateSlug) {
+				case "github_oauth": {
+					// GitHub verifies OAuth credentials through the app-management
+					// endpoint, which requires Basic auth and the access token in JSON.
+					const clientId =
+						configString(instance.config, "client_id") ??
+						secrets.get("client_id");
+					const accessToken = secrets.get("access_token");
+					if (!clientId || !accessToken) {
+						throw new GatewayError(
+							400,
+							"CONNECTION_NOT_CONNECTED",
+							"Connect this OAuth connection before verifying it.",
+						);
+					}
+					credentialPath = `applications/${clientId}/token`;
+					target = appendUpstreamPath(baseUrl, credentialPath, "");
+					method = "POST";
+					testBody = JSON.stringify({ access_token: accessToken });
+					break;
 				}
-		}
+				case "google_oauth":
+					target = new URL("https://openidconnect.googleapis.com/v1/userinfo");
+					method = "GET";
+					credentialPath = "";
+					break;
+				case "microsoft_entra_oauth":
+					target = new URL("https://graph.microsoft.com/oidc/userinfo");
+					method = "GET";
+					credentialPath = "";
+					break;
+				default:
+					target = new URL(configuredTestUrl ?? baseUrl.toString(), baseUrl);
+					method =
+						configString(instance.config, "test_method") === "POST"
+							? "POST"
+							: "GET";
+					testBody = configString(instance.config, "test_body");
+					credentialPath = target.pathname.replace(/^\//, "");
+					if (method === "GET" && testBody) {
+						throw new GatewayError(
+							400,
+							"INVALID_TEST_BODY",
+							"Test JSON body cannot be used with GET.",
+						);
+					}
+			}
 	} catch (error) {
 		if (error instanceof GatewayError) throw error;
 		throw new GatewayError(400, "INVALID_TEST_URL", "The test URL is invalid.");
@@ -170,6 +194,7 @@ export async function verifyConnection(
 			? (instance.config as Record<string, unknown>)
 			: undefined,
 	);
+	target = applyProviderPolicy(headers, target, instance.templateSlug, secrets);
 	if (method === "POST" && testBody) {
 		try {
 			JSON.parse(testBody);
@@ -183,16 +208,25 @@ export async function verifyConnection(
 		}
 	}
 	let response: Response | undefined;
+	const controller = new AbortController();
+	const timeout = setTimeout(
+		() => controller.abort(),
+		template?.mcp ? 10_000 : 30_000,
+	);
 	try {
 		response = await fetch(target, {
 			body: method === "POST" ? testBody : undefined,
 			headers,
 			method,
 			redirect: "manual",
+			signal: controller.signal,
 		});
 	} catch {
 		// Persist the failed health state below, then return the same safe result shape.
+	} finally {
+		clearTimeout(timeout);
 	}
+	if (template?.mcp && response?.body) await response.body.cancel();
 	const ok = Boolean(
 		response && response.status >= 200 && response.status < 400,
 	);

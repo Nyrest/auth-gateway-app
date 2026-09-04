@@ -136,7 +136,7 @@ export async function listApiKeys(
 ): Promise<ApiKeyListResult> {
 	const db = getDb();
 	const normalized = normalizeListInput(input);
-	const filters = [eq(apiKeys.userId, userId)];
+	const filters = [eq(apiKeys.userId, userId), eq(apiKeys.keyKind, "user")];
 	if (normalized.search) {
 		const pattern = `%${normalized.search.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
 		const searchFilter = or(
@@ -353,6 +353,7 @@ export async function updateApiKey(
 			and(
 				eq(apiKeys.userId, userId),
 				eq(apiKeys.id, id),
+				eq(apiKeys.keyKind, "user"),
 				isNull(apiKeys.revokedAt),
 			),
 		)
@@ -375,7 +376,13 @@ export async function updateApiKey(
 export async function deleteApiKey(userId: string, id: string): Promise<void> {
 	const [deleted] = await getDb()
 		.delete(apiKeys)
-		.where(and(eq(apiKeys.userId, userId), eq(apiKeys.id, id)))
+		.where(
+			and(
+				eq(apiKeys.userId, userId),
+				eq(apiKeys.id, id),
+				eq(apiKeys.keyKind, "user"),
+			),
+		)
 		.returning({ id: apiKeys.id });
 	if (!deleted)
 		throw new GatewayError(404, "API_KEY_NOT_FOUND", "API key not found.");
@@ -491,6 +498,7 @@ export async function revokeApiKey(userId: string, id: string): Promise<void> {
 			and(
 				eq(apiKeys.userId, userId),
 				eq(apiKeys.id, id),
+				eq(apiKeys.keyKind, "user"),
 				isNull(apiKeys.revokedAt),
 			),
 		)
@@ -518,6 +526,7 @@ export async function findActiveApiKey(rawKey: string) {
 		.where(
 			and(
 				eq(apiKeys.digest, sha256(rawKey)),
+				eq(apiKeys.keyKind, "user"),
 				isNull(apiKeys.revokedAt),
 				or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, new Date())),
 			),
@@ -531,6 +540,48 @@ export async function markApiKeyUsed(id: string): Promise<void> {
 		.update(apiKeys)
 		.set({ lastUsedAt: new Date() })
 		.where(eq(apiKeys.id, id));
+}
+
+export async function getOrCreatePlaygroundApiKey(userId: string) {
+	const db = getDb();
+	const existing = await db
+		.select()
+		.from(apiKeys)
+		.where(and(eq(apiKeys.userId, userId), eq(apiKeys.keyKind, "playground")))
+		.limit(1);
+	if (existing[0]) return existing[0];
+
+	const id = uuidv7();
+	const now = new Date();
+	await db
+		.insert(apiKeys)
+		.values({
+			id,
+			userId,
+			label: "Playground",
+			prefix: `agw_playground_${id.slice(0, 8)}`,
+			digest: sha256(createApiKeySecret()),
+			keyKind: "playground",
+			permissions: ["proxy"],
+			providerScopeMode: "all",
+			providerSlugs: [],
+			instanceIds: [],
+			createdAt: now,
+			updatedAt: now,
+		})
+		.onConflictDoNothing();
+	const [created] = await db
+		.select()
+		.from(apiKeys)
+		.where(and(eq(apiKeys.userId, userId), eq(apiKeys.keyKind, "playground")))
+		.limit(1);
+	if (!created)
+		throw new GatewayError(
+			500,
+			"PLAYGROUND_API_KEY_CREATE_FAILED",
+			"The Playground API key could not be created.",
+		);
+	return created;
 }
 
 export { asStringArray };

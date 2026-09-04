@@ -586,7 +586,7 @@ function ConnectionCard({
 						<span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-primary">
 							<ProviderIcon
 								className="size-5"
-								definition={template?.icon ?? { kind: "generic" }}
+								templateSlug={connection.templateSlug}
 								protocol={template?.protocol ?? "oidc"}
 							/>
 						</span>

@@ -1,6 +1,18 @@
-import { baseUrlField, stringField, testFields } from "./common";
+import ModelContextProtocol from "@thesvg/react/model-context-protocol";
+
+import { baseUrlField, mcpBaseFields, stringField, testFields } from "./common";
 import { createOidcProvider } from "./oidc";
-import type { ProviderDefinition } from "./types";
+import type {
+	ProviderDefinition,
+	ProviderRuntimeIconDefinition,
+} from "./types";
+
+export const genericMcpIcon = {
+	kind: "brand",
+	component: ModelContextProtocol,
+	light: ModelContextProtocol,
+	dark: ModelContextProtocol,
+} satisfies ProviderRuntimeIconDefinition;
 
 export const genericOidc = createOidcProvider({
 	slug: "generic_oidc",
@@ -130,3 +142,121 @@ export const genericHeaders: ProviderDefinition = {
 		...testFields,
 	],
 };
+
+function mcpFields(
+	authFields: readonly ProviderDefinition["fields"][number][] = [],
+) {
+	return [...mcpBaseFields, ...authFields];
+}
+
+export const genericMcp: ProviderDefinition = {
+	slug: "generic_mcp",
+	category: "generic",
+	icon: genericMcpIcon,
+	defaultBaseUrl: "https://mcp.example.com/mcp",
+	protocol: "headers",
+	auth: { kind: "none" },
+	mcp: { transport: "streamable_http", sessionMode: "stateless" },
+	capabilities: { test: true },
+	metadata: {
+		nameKey: "providers_generic_mcp_name",
+		descriptionKey: "providers_generic_mcp_description",
+	},
+	fields: mcpFields(),
+};
+
+export const genericMcpBasic: ProviderDefinition = {
+	...genericMcp,
+	slug: "generic_mcp_basic",
+	auth: { kind: "basic", usernameField: "username", passwordField: "password" },
+	metadata: {
+		nameKey: "providers_generic_mcp_basic_name",
+		descriptionKey: "providers_generic_mcp_basic_description",
+	},
+	fields: mcpFields([
+		stringField("username", "provider_field_username", {
+			required: true,
+			secret: true,
+		}),
+		stringField("password", "provider_field_password", {
+			required: true,
+			secret: true,
+		}),
+	]),
+};
+
+export const genericMcpBearer: ProviderDefinition = {
+	...genericMcp,
+	slug: "generic_mcp_bearer",
+	auth: { kind: "bearer", tokenField: "token" },
+	metadata: {
+		nameKey: "providers_generic_mcp_bearer_name",
+		descriptionKey: "providers_generic_mcp_bearer_description",
+	},
+	fields: mcpFields([
+		stringField("token", "provider_field_token", {
+			required: true,
+			secret: true,
+		}),
+	]),
+};
+
+export const genericMcpHeaders: ProviderDefinition = {
+	...genericMcp,
+	slug: "generic_mcp_headers",
+	auth: { kind: "custom_headers", field: "headers" },
+	metadata: {
+		nameKey: "providers_generic_mcp_headers_name",
+		descriptionKey: "providers_generic_mcp_headers_description",
+	},
+	fields: mcpFields([
+		{
+			key: "headers",
+			labelKey: "provider_field_headers",
+			descriptionKey: "provider_field_headers_description",
+			type: "key_value",
+			required: false,
+			secret: true,
+			defaultValue: [],
+		},
+	]),
+};
+
+export const genericMcpOauth: ProviderDefinition = {
+	...genericMcp,
+	slug: "generic_mcp_oauth",
+	protocol: "oauth2",
+	auth: { kind: "oauth_bearer" },
+	metadata: {
+		nameKey: "providers_generic_mcp_oauth_name",
+		descriptionKey: "providers_generic_mcp_oauth_description",
+	},
+	capabilities: { connect: true, test: true, refresh: true },
+	fields: mcpFields([
+		stringField("client_id", "provider_field_client_id", {
+			required: false,
+			secret: false,
+		}),
+		stringField("client_secret", "provider_field_client_secret", {
+			required: false,
+			secret: true,
+		}),
+		stringField("scopes", "provider_field_scopes", {
+			required: false,
+			secret: false,
+		}),
+	]),
+};
+
+export const genericProviders: readonly ProviderDefinition[] = [
+	genericOidc,
+	genericOauth2,
+	genericBasic,
+	genericBearer,
+	genericHeaders,
+	genericMcp,
+	genericMcpBasic,
+	genericMcpBearer,
+	genericMcpHeaders,
+	genericMcpOauth,
+];

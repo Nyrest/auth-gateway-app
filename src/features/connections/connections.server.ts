@@ -252,6 +252,20 @@ function assertFields(
 	) {
 		invalidProviderField("test_body", "cannot be used with GET");
 	}
+	if (template.mcp) {
+		const transport = config.transport ?? template.mcp.transport;
+		const sessionMode = config.session_mode ?? template.mcp.sessionMode;
+		if (transport === "sse" && sessionMode !== "stateful") {
+			config.session_mode = "stateful";
+		}
+		if (
+			transport === "streamable_http" &&
+			sessionMode !== "stateless" &&
+			sessionMode !== "stateful"
+		) {
+			invalidProviderField("session_mode", "must be stateless or stateful");
+		}
+	}
 
 	return config;
 }
