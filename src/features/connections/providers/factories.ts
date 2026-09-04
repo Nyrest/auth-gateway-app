@@ -20,8 +20,10 @@ export function createApiKeyProvider(input: {
 	readonly testPath: string;
 	readonly icon?: ProviderRuntimeIconDefinition;
 	readonly keyName?: string;
+	readonly keyPrefix?: string;
 	readonly location?: "header" | "query" | "path";
 	readonly fixedHeaders?: Readonly<Record<string, string>>;
+	readonly verification?: ProviderDefinition["verification"];
 }): ProviderDefinition {
 	return {
 		slug: input.slug,
@@ -34,12 +36,13 @@ export function createApiKeyProvider(input: {
 			field: "api_key",
 			location: input.location ?? "header",
 			name: input.keyName,
+			...(input.keyPrefix ? { prefix: input.keyPrefix } : {}),
 		},
 		fixedHeaders: input.fixedHeaders,
 		capabilities: { test: true },
 		metadata: { nameKey: input.nameKey, descriptionKey: input.descriptionKey },
 		fields: [baseUrlField, apiKeyField()],
-		verification: { method: "GET", path: input.testPath },
+		verification: input.verification ?? { method: "GET", path: input.testPath },
 	};
 }
 

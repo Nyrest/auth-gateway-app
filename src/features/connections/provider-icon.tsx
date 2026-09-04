@@ -30,7 +30,7 @@ function renderProviderIcon(
 		return createElement(icon.component, {
 			"aria-hidden": true,
 			className,
-			variant: "default",
+			variant: icon.variant ?? "default",
 		});
 	}
 

@@ -52,6 +52,7 @@ export type ProviderAuthStrategy =
 			readonly field: string;
 			readonly location: "header" | "query" | "path";
 			readonly name?: string;
+			readonly prefix?: string;
 	  }
 	| {
 			readonly kind: "json_api_key";
@@ -76,7 +77,7 @@ export type ProviderCapabilities = {
 };
 
 export type ProviderIconDefinition =
-	| { readonly kind: "brand" }
+	| { readonly kind: "brand"; readonly variant?: "default" | "mono" }
 	| { readonly kind: "generic" };
 
 /** Runtime-only icon components; they are removed before templates cross the server boundary. */

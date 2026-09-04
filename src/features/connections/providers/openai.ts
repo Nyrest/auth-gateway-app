@@ -16,6 +16,7 @@ export const openai: ProviderDefinition = createApiKeyProvider({
 		dark: Openai,
 	},
 	keyName: "Authorization",
+	keyPrefix: "Bearer",
 });
 
 export const openaiProviders: readonly ProviderDefinition[] = [openai];

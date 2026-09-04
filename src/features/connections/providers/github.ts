@@ -46,6 +46,7 @@ export const githubPersonalAccessToken: ProviderDefinition =
 		testPath: "/user",
 		icon: githubIcon,
 		keyName: "Authorization",
+		keyPrefix: "Bearer",
 	});
 
 export const githubApp: ProviderDefinition = createApiKeyProvider({
@@ -56,6 +57,7 @@ export const githubApp: ProviderDefinition = createApiKeyProvider({
 	testPath: "/app",
 	icon: githubIcon,
 	keyName: "Authorization",
+	keyPrefix: "Bearer",
 });
 
 export const githubAppOauth: ProviderDefinition = createOidcProvider({

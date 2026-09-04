@@ -350,14 +350,7 @@ export function injectConnectionCredentials(
 			const value = requiredSecret(secrets, auth.field);
 			const name = auth.name ?? "x-api-key";
 			if (auth.location === "header")
-				headers.set(
-					name,
-					(name.toLowerCase() === "authorization" &&
-						templateSlug.startsWith("github")) ||
-						templateSlug === "openai"
-						? `Bearer ${value}`
-						: value,
-				);
+				headers.set(name, auth.prefix ? `${auth.prefix} ${value}` : value);
 			return;
 		}
 		if (auth.kind === "custom_headers") {
