@@ -1,86 +1,116 @@
 # Auth Gateway
 
-Auth Gateway is a personal, security-focused proxy for managed upstream credentials. It keeps provider secrets encrypted, selects an eligible connection from an owner-scoped pool, and streams traffic through `/endpoint/{providerSlug}/*`.
+Auth Gateway is a self-hosted gateway for sending requests to upstream providers through one stable endpoint. Configure a provider once, keep its credentials encrypted, and use a generated proxy API key from your applications.
 
-The application is TypeScript-only: TanStack Start, Better Auth, Drizzle, PostgreSQL, and Bun. It supports exactly two production targets:
+## What you can do
 
-- Cloudflare Workers with a required Hyperdrive binding (the primary target).
-- A Bun Docker container with PostgreSQL.
+- Connect generic HTTP endpoints and predefined providers, including API-key, OAuth/OIDC, and MCP providers.
+- Add optional custom headers to every provider. Headers can be edited visually or as JSON, and values are encrypted with the provider credentials.
+- Use the standalone **Generic HTTP** provider (`generic_headers`) when you need a provider with no predefined template. MCP providers accept custom headers directly.
+- Create API keys with provider-level access rules.
+- Test requests in Playground and inspect request metrics from the dashboard.
 
-Every generic and predefined provider exposes an optional Custom headers section, including OAuth/OIDC and MCP providers. Headers are edited in the shared Visual/JSON editor, persisted as a canonical `{ key, value }[]` payload, and encrypted with the rest of the provider secrets. At outbound time they are evaluated on the server and applied after provider authentication and fixed headers, so they can override those values; the connection UI shows a non-blocking warning for known conflicts. `generic_headers` is available as the standalone Generic HTTP provider; there is no separate Generic MCP headers provider because all MCP providers support custom headers directly.
+Custom headers are applied after provider authentication and fixed headers. They may therefore override those values; the UI shows a warning for known conflicts but does not block saving or sending. Supported `{{...}}` expressions in header values are resolved only when a request is sent.
 
-## Setup
+Choose one deployment method below.
 
-Requirements: Bun 1.3.6, PostgreSQL, and a 32-byte base64url root secret.
+## Cloudflare Worker
 
-```sh
-bun install --frozen-lockfile
-bun run secret:generate
-# Set AUTH_GATEWAY_SECRET and DATABASE_URL in .env or your shell.
-bun run db:migrate
-bun run dev
-```
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Nyrest/auth-gateway-app)
 
-Open `http://localhost:3000`. Initial setup creates the first account and owner claim in one database transaction. Public signup remains blocked. The UI is intentionally personal-use focused, while every persisted resource remains scoped by Better Auth user ID for future multi-user provisioning.
+The button opens Cloudflare's deployment flow for this repository. A PostgreSQL database and a Cloudflare Hyperdrive configuration are required.
 
-## Configuration
+1. Create a PostgreSQL database that Cloudflare Hyperdrive can reach.
+2. Create a Hyperdrive configuration and note its ID:
 
-| Variable | Required | Target | Purpose |
+   ```sh
+   bunx wrangler hyperdrive create auth-gateway-db --connection-string="postgresql://USER:PASSWORD@HOST:5432/DATABASE"
+   ```
+
+3. Add the binding to `wrangler.jsonc`:
+
+   ```jsonc
+   "hyperdrive": [{
+     "binding": "HYPERDRIVE",
+     "id": "your-hyperdrive-id"
+   }]
+   ```
+
+4. Add the required secret. Generate one locally with `bun src/scripts/generate-secret.ts`, then copy the single-line result when prompted:
+
+   ```sh
+   bunx wrangler secret put AUTH_GATEWAY_SECRET
+   ```
+
+5. Set `DATABASE_URL` to the direct PostgreSQL connection string on a trusted machine (not the Hyperdrive URL), apply the schema, and deploy:
+
+   ```sh
+   bun run db:migrate
+   bun run deploy:cloudflare
+   ```
+
+After deployment, open the Worker URL, complete first-time setup, and create a proxy API key. Cloudflare cron triggers are included automatically.
+
+## Docker
+
+Docker Compose starts the application, runs the database migration once, and keeps PostgreSQL data in a named volume.
+
+1. Copy the example environment file and set `AUTH_GATEWAY_SECRET`:
+
+   ```sh
+   cp .env.example .env
+   bun src/scripts/generate-secret.ts
+   ```
+
+   Paste the generated value into `.env` without quotes or `=` padding.
+
+2. Start the stack:
+
+   ```sh
+   docker compose up --build
+   ```
+
+3. Open <http://localhost:3000>, complete first-time setup, and create a proxy API key.
+
+Stop the stack with `docker compose down`. The database volume is retained. To intentionally remove all local data, use `docker compose down -v`.
+
+The Compose database is private to the stack and persists in a named volume.
+
+## Environment variables
+
+| Variable | Required | Used by | Description |
 | --- | --- | --- | --- |
-| `AUTH_GATEWAY_SECRET` | Yes | Both | Exactly 32 random bytes, encoded as unpadded base64url. Derives Better Auth, provider encryption, and initial-setup secrets. |
-| `DATABASE_URL` | Yes | Docker and migrations | PostgreSQL connection string. Cloudflare Worker requests use `HYPERDRIVE` instead. |
-| `POSTGRES_PASSWORD` | Yes | Docker Compose | Password for the bundled PostgreSQL service; use base64url so the generated connection URL remains valid. |
-| `PORT` | No | Docker | Listen port; defaults to `3000`. |
+| `AUTH_GATEWAY_SECRET` | Yes | Worker and Docker | A stable secret containing exactly 32 random bytes, encoded as unpadded base64url (normally 43 characters). Generate it with `bun src/scripts/generate-secret.ts`. Keep it private and do not change it after storing connections or sessions. |
+| `DATABASE_URL` | Migrations and local tooling | Docker runtime or migration commands | PostgreSQL connection string. Docker Compose supplies its internal value automatically; Cloudflare uses the `HYPERDRIVE` binding at runtime. |
+| `PORT` | No | Docker | Application port; defaults to `3000`. If you change it, update the Docker port mapping as well. |
 
-No public-origin, locale, or scheduler environment variables are supported. The public origin is validated installation data, and locales use the `PARAGLIDE_LOCALE` cookie.
+`HYPERDRIVE` is a Wrangler binding, not a `.env` variable. Configure it in `wrangler.jsonc` as shown above.
 
-## Scheduling
+## First use
 
-Both targets use the fixed UTC schedule `*/10 * * * *`. The shared scheduler acquires a PostgreSQL lease, prioritizes credential refresh before health checks, and performs no more than one network job per invocation. It deletes expired OAuth state and 30-day-old metrics in bounded batches, immediately scheduling another batch when a backlog remains.
+1. Open the deployed application and create the initial account.
+2. Go to **Connections → Create Connection**, choose a provider, and enter its endpoint and credentials.
+3. Optionally expand **Custom Headers**. Use Visual mode for rows or JSON mode for an object such as:
 
-Cloudflare receives native Worker cron events; Docker always registers `Bun.cron`. There is no HTTP cron endpoint. The cadence is 144 Worker cron invocations per day, deliberately conservative for the Workers Free-plan cron limits.
+   ```json
+   {
+     "X-Tenant": "acme",
+     "X-Signature": "{{md5(secret)}}"
+   }
+   ```
 
-## Cloudflare Workers
+4. Go to **API Keys**, create a key, and copy it immediately—the full value is shown only once.
+5. Send requests through:
 
-1. Create a Hyperdrive configuration, add its real ID as `HYPERDRIVE` in `wrangler.jsonc`, and apply migrations from a trusted machine using a direct `DATABASE_URL`.
-2. Store `AUTH_GATEWAY_SECRET` with `wrangler secret put AUTH_GATEWAY_SECRET`.
-3. Deploy with `bun run deploy:cloudflare`.
+   ```sh
+   curl "https://YOUR_HOST/endpoint/PROVIDER_SLUG/v1/models" \
+     -H "Authorization: Bearer YOUR_PROXY_API_KEY"
+   ```
 
-The Worker has native `fetch` and `scheduled` handlers. Request-adjacent audit events, metrics, and API-key timestamps are aggregated with `ctx.waitUntil`; failures are sanitized and best-effort, never part of the request transaction.
+   Replace `PROVIDER_SLUG` with the slug shown in Connections and append the path expected by that provider.
 
-## Bun Docker
+## Operational notes
 
-```sh
-set AUTH_GATEWAY_SECRET=<output from bun run secret:generate>
-set POSTGRES_PASSWORD=<base64url password>
-docker compose up --build
-```
-
-Compose runs the one-shot `migrate` service before the application service. The application image itself never applies schema changes at startup; it uses `Bun.serve`, safely serves built static assets, records the socket peer address, registers native cron, and drains bounded background work on SIGTERM/SIGINT. PostgreSQL data stays in the named Compose volume.
-
-## Security model
-
-- Better Auth uses email/password, an 8-character minimum, database rate limits, explicit trusted origins, host-only secure cookies for HTTPS, and no public signup UI.
-- All management Server Functions require a browser session and validate strict Zod payloads. `/docs` is session-protected; OpenAPI, health, OAuth callback, Better Auth, initial setup, and authenticated proxy are the only intentional public surfaces.
-- Provider secrets are AES-256-GCM encrypted with associated data. API keys are stored as digests and revealed once.
-- Custom header values are part of the encrypted provider secret envelope and are never returned in connection views, API-key responses, or provider templates. Header names are validated against Fetch/Cloudflare/Bun platform restrictions, with limits of 50 entries and 8 KiB per value.
-- The streaming proxy caps request bodies at 100 MiB, validates paths and upstream URLs, blocks unsafe header injection and private/reserved literal targets unless explicitly opted in, permits HTTP only for that private-network mode, handles redirects manually, and strips response cookies and hop-by-hop headers. OAuth and MCP metadata requests use the same network boundary with timeouts and a 256 KiB JSON limit.
-- English and Simplified Chinese use type-safe Paraglide messages. Locale selection writes a path-wide SameSite cookie without changing URLs.
-
-## Checks
-
-```sh
-bun install --frozen-lockfile
-bun run i18n:compile
-bun run generate-routes
-bun run check
-bun run typecheck
-bun test
-bun run build:cloudflare
-bun run build:docker
-bun run db:generate
-bun run build:cloudflare && bun run wrangler -- deploy --dry-run
-docker build --check .
-```
-
-This early-stage release deliberately uses a single clean initial Drizzle migration. Existing databases from the retired migration history, including the former generic `headers` field, are unsupported and must be recreated before applying it; no compatibility alias or startup migration is provided. Subsequent schema changes should use `bun run db:generate` to create forward migrations.
+- Provider credentials and custom header values are encrypted at rest and are never included in connection list responses.
+- Proxy API keys are scoped to the providers you select and can be revoked from the dashboard.
+- If you are upgrading from an early development build, recreate the database before running `bun run db:migrate`; databases created by the retired schema are not supported.

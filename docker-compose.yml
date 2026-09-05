@@ -3,7 +3,7 @@ services:
     build: .
     command: ["bun", "src/db/migrate.ts"]
     environment:
-      DATABASE_URL: postgresql://auth_gateway:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@database:5432/auth_gateway
+      DATABASE_URL: postgresql://auth_gateway@database:5432/auth_gateway
     depends_on:
       database:
         condition: service_healthy
@@ -13,7 +13,7 @@ services:
       - "3000:3000"
     environment:
       AUTH_GATEWAY_SECRET: ${AUTH_GATEWAY_SECRET:?Set a 32-byte base64url secret}
-      DATABASE_URL: postgresql://auth_gateway:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@database:5432/auth_gateway
+      DATABASE_URL: postgresql://auth_gateway@database:5432/auth_gateway
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -28,7 +28,7 @@ services:
     environment:
       POSTGRES_DB: auth_gateway
       POSTGRES_USER: auth_gateway
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_HOST_AUTH_METHOD: trust
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U auth_gateway -d auth_gateway"]
       interval: 5s
