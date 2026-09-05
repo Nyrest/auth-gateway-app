@@ -59,7 +59,6 @@ export type ProviderAuthStrategy =
 			readonly field: string;
 			readonly name: string;
 	  }
-	| { readonly kind: "custom_headers"; readonly field: string }
 	| { readonly kind: "none" };
 
 export type ProviderMcpTransport = "sse" | "streamable_http";
@@ -73,30 +72,27 @@ export type ProviderMcpDefinition = {
 export type ProviderCapabilities = {
 	readonly connect?: boolean;
 	readonly test?: boolean;
-	readonly refresh?: boolean;
 };
 
-export type ProviderIconDefinition =
-	| { readonly kind: "brand"; readonly variant?: "default" | "mono" }
+/** Runtime-only icon components never cross a Server Function boundary. */
+export type ProviderRuntimeIconDefinition =
+	| {
+			readonly kind: "brand";
+			readonly variant?: "default" | "mono";
+			readonly component?: ElementType;
+			readonly light?: ElementType;
+			readonly dark?: ElementType;
+	  }
 	| { readonly kind: "generic" };
-
-/** Runtime-only icon components; they are removed before templates cross the server boundary. */
-export type ProviderRuntimeIconDefinition = ProviderIconDefinition & {
-	readonly component?: ElementType;
-	readonly light?: ElementType;
-	readonly dark?: ElementType;
-};
 
 export type ProviderTemplate = {
 	readonly slug: string;
 	readonly category: "generic" | "predefined";
-	readonly icon: ProviderIconDefinition;
 	readonly defaultBaseUrl: string;
 	readonly protocol: ProviderProtocol;
 	readonly auth?: ProviderAuthStrategy;
 	readonly fixedHeaders?: Readonly<Record<string, string>>;
 	readonly fixedQuery?: Readonly<Record<string, string>>;
-	readonly pathPrefix?: string;
 	readonly mcp?: ProviderMcpDefinition;
 	readonly fields: readonly ProviderField[];
 	readonly metadata: {
@@ -125,15 +121,9 @@ type JsonLike =
 	| readonly JsonLike[];
 
 export type ProviderValidator = (input: unknown) => void | Promise<void>;
-export type ProviderConnectHandler = (...args: readonly unknown[]) => unknown;
-export type ProviderTestHandler = (...args: readonly unknown[]) => unknown;
-export type ProviderRefreshHandler = (...args: readonly unknown[]) => unknown;
 
-/** Runtime-only definition; hooks are projected out before server serialization. */
-export type ProviderDefinition = Omit<ProviderTemplate, "icon"> & {
+/** Runtime-only definition; validation never crosses the server boundary. */
+export type ProviderDefinition = ProviderTemplate & {
 	readonly icon: ProviderRuntimeIconDefinition;
 	readonly validate?: ProviderValidator;
-	readonly connect?: ProviderConnectHandler;
-	readonly test?: ProviderTestHandler;
-	readonly refresh?: ProviderRefreshHandler;
 };

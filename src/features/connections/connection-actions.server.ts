@@ -2,7 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "#/db/index.server";
 import { providerInstances } from "#/db/schema";
 import { recordAuditEvent } from "#/server/audit.server";
+import { applyCustomHeaders } from "#/server/custom-headers.server";
 import { GatewayError } from "#/server/errors";
+import { fetchConfiguredUpstream } from "#/server/outbound-request.server";
 import {
 	applyProviderPolicy,
 	injectConnectionCredentials,
@@ -207,24 +209,18 @@ export async function verifyConnection(
 			);
 		}
 	}
+	applyCustomHeaders(headers, secrets);
 	let response: Response | undefined;
-	const controller = new AbortController();
-	const timeout = setTimeout(
-		() => controller.abort(),
-		template?.mcp ? 10_000 : 30_000,
-	);
 	try {
-		response = await fetch(target, {
+		response = await fetchConfiguredUpstream(target, {
 			body: method === "POST" ? testBody : undefined,
 			headers,
 			method,
 			redirect: "manual",
-			signal: controller.signal,
+			timeoutMs: template?.mcp ? 10_000 : 30_000,
 		});
 	} catch {
 		// Persist the failed health state below, then return the same safe result shape.
-	} finally {
-		clearTimeout(timeout);
 	}
 	if (template?.mcp && response?.body) await response.body.cancel();
 	const ok = Boolean(

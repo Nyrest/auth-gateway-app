@@ -15,6 +15,9 @@ describe("upstream URL validation", () => {
 			validateUpstreamUrl("https://example.com/api#secret", false),
 		).toThrow();
 		expect(() => validateUpstreamUrl("http://127.0.0.1:8080", false)).toThrow();
+		expect(() => validateUpstreamUrl("http://api.example.com", false)).toThrow(
+			"Public upstream URLs must use HTTPS.",
+		);
 	});
 
 	test("allows explicit private opt-in and blocks encoded traversal", () => {
@@ -35,6 +38,15 @@ describe("upstream URL validation", () => {
 				"",
 			),
 		).toThrow();
+	});
+
+	test("limits HTTP to the private-network deployment mode", () => {
+		expect(validateUpstreamUrl("http://127.0.0.1:8080", true).protocol).toBe(
+			"http:",
+		);
+		expect(validateUpstreamUrl("https://api.example.com", false).protocol).toBe(
+			"https:",
+		);
 	});
 
 	test("rejects every private DNS answer and the complete IPv6 link-local range", () => {

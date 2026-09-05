@@ -1,10 +1,5 @@
-/** Backwards-compatible exports for callers that have not moved to registry.ts. */
 import { githubOauthEndpoints } from "./providers/github";
-import {
-	getProviderDefinition,
-	listProviderDefinitions,
-	providerRegistry,
-} from "./providers/registry";
+import { getProviderDefinition, providerRegistry } from "./providers/registry";
 import type { ProviderTemplate } from "./providers/types";
 
 export type {
@@ -14,14 +9,13 @@ export type {
 	ProviderTemplate,
 } from "./providers/types";
 
-/** Keep server functions serializable: runtime hooks and icon components never cross the boundary. */
+/** Keep Server Function results serializable: runtime icon components stay client-side. */
 export function toProviderTemplate(
 	provider: (typeof providerRegistry)[number],
 ): ProviderTemplate {
 	return {
 		slug: provider.slug,
 		category: provider.category,
-		icon: { kind: provider.icon.kind },
 		defaultBaseUrl: provider.defaultBaseUrl,
 		protocol: provider.protocol,
 		fields: provider.fields,
@@ -36,7 +30,6 @@ export function toProviderTemplate(
 		...(provider.auth ? { auth: provider.auth } : {}),
 		...(provider.fixedHeaders ? { fixedHeaders: provider.fixedHeaders } : {}),
 		...(provider.fixedQuery ? { fixedQuery: provider.fixedQuery } : {}),
-		...(provider.pathPrefix ? { pathPrefix: provider.pathPrefix } : {}),
 		...(provider.mcp ? { mcp: provider.mcp } : {}),
 		...(provider.verification ? { verification: provider.verification } : {}),
 	};
@@ -55,5 +48,3 @@ export function getOAuthEndpoints(templateSlug: string) {
 	if (templateSlug === "github_oauth") return githubOauthEndpoints;
 	return null;
 }
-
-export { listProviderDefinitions };

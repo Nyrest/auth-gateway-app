@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { and, eq, isNull } from "drizzle-orm";
-import { getDb } from "#/db/index.server";
+import { type GatewayDatabase, getDb } from "#/db/index.server";
 import { appSettings, userSettings } from "#/db/schema";
 import {
 	changePasswordSchema,
@@ -72,7 +72,11 @@ export const completeSetup = createServerFn({ method: "POST" })
 				);
 			}
 
-			const response = await (await getAuth(publicOrigin)).api.signUpEmail({
+			// Better Auth writes through this same transaction, so a failed setup
+			// cannot leave behind an account that was never made the owner.
+			const response = await (
+				await getAuth(publicOrigin, tx as GatewayDatabase)
+			).api.signUpEmail({
 				body: { email: data.email, name: data.name, password: data.password },
 			});
 

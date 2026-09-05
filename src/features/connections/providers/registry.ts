@@ -1,5 +1,6 @@
 import { anthropicProviders } from "./anthropic";
 import { cloudflareProviders } from "./cloudflare";
+import { withCustomHeaders } from "./common";
 import { elevenlabsProviders } from "./elevenlabs";
 import { genericProviders } from "./generic";
 import { githubProviders } from "./github";
@@ -18,7 +19,7 @@ import { ticktickProviders } from "./ticktick";
 import type { ProviderDefinition } from "./types";
 
 /** The single composition point for built-in and generic connection providers. */
-export const providerRegistry: readonly ProviderDefinition[] = [
+const rawProviderRegistry: readonly ProviderDefinition[] = [
 	...genericProviders,
 	...elevenlabsProviders,
 	...googleProviders,
@@ -38,12 +39,15 @@ export const providerRegistry: readonly ProviderDefinition[] = [
 	...n8nProviders,
 ];
 
+/** Add the same optional encrypted header field to every provider exactly once. */
+export const providerRegistry: readonly ProviderDefinition[] =
+	rawProviderRegistry.map((provider) => ({
+		...provider,
+		fields: withCustomHeaders(provider.fields),
+	}));
+
 export function getProviderDefinition(
 	slug: string,
 ): ProviderDefinition | undefined {
 	return providerRegistry.find((provider) => provider.slug === slug);
-}
-
-export function listProviderDefinitions(): readonly ProviderDefinition[] {
-	return providerRegistry;
 }

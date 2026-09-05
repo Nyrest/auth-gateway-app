@@ -171,7 +171,27 @@ export function validateUpstreamUrl(
 			"Private and local upstreams require the explicit advanced opt-in.",
 		);
 	}
+	if (url.protocol === "http:" && !allowPrivateNetwork) {
+		throw new GatewayError(
+			400,
+			"INSECURE_UPSTREAM_BLOCKED",
+			"Public upstream URLs must use HTTPS.",
+		);
+	}
 	return url;
+}
+
+function assertPrivateHttpDestination(
+	hostname: string,
+	addresses: readonly string[],
+): void {
+	if (isUnsafeHostname(hostname)) return;
+	if (addresses.length > 0 && addresses.every(isUnsafeHostname)) return;
+	throw new GatewayError(
+		400,
+		"INSECURE_UPSTREAM_BLOCKED",
+		"HTTP upstream URLs are limited to private and local destinations.",
+	);
 }
 
 /** Read the deployment-wide network policy for the current request. */
@@ -204,11 +224,11 @@ export async function validateOutboundUpstreamUrl(
 	allowPrivateNetwork = false,
 ): Promise<URL> {
 	const url = validateUpstreamUrl(value, allowPrivateNetwork);
-	if (
-		allowPrivateNetwork ||
-		parseIpv4(url.hostname) ||
-		parseIpv6(url.hostname)
-	) {
+	const literalAddress = parseIpv4(url.hostname) || parseIpv6(url.hostname);
+	if (literalAddress) {
+		if (url.protocol === "http:" && allowPrivateNetwork) {
+			assertPrivateHttpDestination(url.hostname, []);
+		}
 		return url;
 	}
 	const runtime = getRequestRuntime();
@@ -223,7 +243,12 @@ export async function validateOutboundUpstreamUrl(
 		requests.set(url.hostname, pending);
 	}
 	try {
-		assertPublicDnsAddresses(url.hostname, await pending, allowPrivateNetwork);
+		const addresses = await pending;
+		if (url.protocol === "http:" && allowPrivateNetwork) {
+			assertPrivateHttpDestination(url.hostname, addresses);
+		} else {
+			assertPublicDnsAddresses(url.hostname, addresses, allowPrivateNetwork);
+		}
 	} catch (error) {
 		if (error instanceof GatewayError) throw error;
 		throw new GatewayError(

@@ -126,14 +126,6 @@ function toAuditView(row: typeof auditEvents.$inferSelect): AuditEventView {
 	};
 }
 
-/** Legacy list shape used by the first dashboard implementation. */
-export async function listAuditEvents(
-	userId: string,
-): Promise<readonly AuditEventView[]> {
-	const page = await queryAuditEvents(userId, { page: 1, pageSize: 100 });
-	return page.items;
-}
-
 export async function queryAuditEvents(
 	userId: string,
 	options: {
@@ -175,28 +167,6 @@ export async function queryAuditEvents(
 	};
 }
 
-export async function listProviderStatistics(
-	userId: string,
-): Promise<readonly ProviderStatistic[]> {
-	const rows = await getDb()
-		.select({
-			averageLatencyMs: sql<number>`coalesce(round(avg(${requestMetrics.latencyMs})), 0)::int`,
-			failedRequests: sql<number>`count(*) filter (where ${requestMetrics.statusCode} >= 400)::int`,
-			providerSlug: requestMetrics.providerSlug,
-			totalRequests: sql<number>`count(*)::int`,
-		})
-		.from(requestMetrics)
-		.where(eq(requestMetrics.userId, userId))
-		.groupBy(requestMetrics.providerSlug)
-		.orderBy(desc(sql`count(*)`));
-	return rows.map((row) => ({
-		averageLatencyMs: Number(row.averageLatencyMs),
-		failedRequests: Number(row.failedRequests),
-		providerSlug: row.providerSlug,
-		totalRequests: Number(row.totalRequests),
-	}));
-}
-
 export async function listStatisticsFilters(
 	userId: string,
 	options: { readonly range?: StatisticsRange; readonly now?: Date } = {},
@@ -209,7 +179,7 @@ export async function listStatisticsFilters(
 		gte(requestMetrics.occurredAt, from),
 		lt(requestMetrics.occurredAt, to),
 	);
-	const providers = await getDb()
+	const providersPromise = getDb()
 		.select({
 			providerSlug: requestMetrics.providerSlug,
 			totalRequests: sql<number>`count(*)::int`,
@@ -218,7 +188,7 @@ export async function listStatisticsFilters(
 		.where(timeFilter)
 		.groupBy(requestMetrics.providerSlug)
 		.orderBy(desc(sql`count(*)`));
-	const instances = await getDb()
+	const instancesPromise = getDb()
 		.select({
 			id: providerInstances.id,
 			instanceSlug: providerInstances.instanceSlug,
@@ -239,6 +209,10 @@ export async function listStatisticsFilters(
 			providerInstances.providerSlug,
 		)
 		.orderBy(desc(sql`count(*)`));
+	const [providers, instances] = await Promise.all([
+		providersPromise,
+		instancesPromise,
+	]);
 	return {
 		providers: providers.map((row) => ({
 			providerSlug: row.providerSlug,
@@ -305,7 +279,7 @@ export async function getStatisticsSummary(
 	const to = options.now ?? new Date();
 	const from = rangeStart(range, to);
 	const timeFilter = and(...statisticsFilters(userId, from, to, options));
-	const [totals] = await getDb()
+	const totalsPromise = getDb()
 		.select({
 			totalRequests: sql<number>`count(*)::int`,
 			failedRequests: sql<number>`count(*) filter (where ${requestMetrics.statusCode} >= 400)::int`,
@@ -316,9 +290,7 @@ export async function getStatisticsSummary(
 		})
 		.from(requestMetrics)
 		.where(timeFilter);
-	const totalRequests = Number(totals?.totalRequests ?? 0);
-	const failedRequests = Number(totals?.failedRequests ?? 0);
-	const [health] = await getDb()
+	const healthPromise = getDb()
 		.select({
 			healthy: sql<number>`count(*) filter (where ${providerInstances.health} = 'healthy')::int`,
 			unhealthy: sql<number>`count(*) filter (where ${providerInstances.health} = 'unhealthy')::int`,
@@ -335,7 +307,7 @@ export async function getStatisticsSummary(
 					: []),
 			),
 		);
-	const hourlyRows = await getDb()
+	const hourlyRowsPromise = getDb()
 		.select({
 			bucket: sql<Date>`date_trunc('hour', ${requestMetrics.occurredAt})`,
 			requests: sql<number>`count(*)::int`,
@@ -345,14 +317,14 @@ export async function getStatisticsSummary(
 		.where(timeFilter)
 		.groupBy(sql`date_trunc('hour', ${requestMetrics.occurredAt})`)
 		.orderBy(sql`date_trunc('hour', ${requestMetrics.occurredAt})`);
-	const topEndpoints = await getDb()
+	const topEndpointsPromise = getDb()
 		.select({ path: requestMetrics.path, requests: sql<number>`count(*)::int` })
 		.from(requestMetrics)
 		.where(timeFilter)
 		.groupBy(requestMetrics.path)
 		.orderBy(desc(sql`count(*)`))
 		.limit(10);
-	const topProviders = await getDb()
+	const topProvidersPromise = getDb()
 		.select({
 			providerSlug: requestMetrics.providerSlug,
 			totalRequests: sql<number>`count(*)::int`,
@@ -364,7 +336,7 @@ export async function getStatisticsSummary(
 		.groupBy(requestMetrics.providerSlug)
 		.orderBy(desc(sql`count(*)`))
 		.limit(10);
-	const statusCodes = await getDb()
+	const statusCodesPromise = getDb()
 		.select({
 			statusCode: requestMetrics.statusCode,
 			requests: sql<number>`count(*)::int`,
@@ -373,6 +345,23 @@ export async function getStatisticsSummary(
 		.where(timeFilter)
 		.groupBy(requestMetrics.statusCode)
 		.orderBy(desc(sql`count(*)`));
+	const [
+		[totals],
+		[health],
+		hourlyRows,
+		topEndpoints,
+		topProviders,
+		statusCodes,
+	] = await Promise.all([
+		totalsPromise,
+		healthPromise,
+		hourlyRowsPromise,
+		topEndpointsPromise,
+		topProvidersPromise,
+		statusCodesPromise,
+	]);
+	const totalRequests = Number(totals?.totalRequests ?? 0);
+	const failedRequests = Number(totals?.failedRequests ?? 0);
 	const hours = range === "24h" ? 24 : range === "7d" ? 24 * 7 : 24 * 30;
 	const byHour = new Map(
 		hourlyRows.map((row) => [

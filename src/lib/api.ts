@@ -3,10 +3,7 @@ import {
 	listApiKeyScopeOptionsForUser,
 	listApiKeysForUser,
 } from "#/features/api-keys/api-keys.functions";
-import type {
-	ApiKeyListResult,
-	ApiKeyPermission,
-} from "#/features/api-keys/api-keys.types";
+import type { ApiKeyListResult } from "#/features/api-keys/api-keys.types";
 import {
 	getConnectionDetailsForUser,
 	listConnectionsForUser,
@@ -59,7 +56,6 @@ export type AuditEventsQueryInput = {
 
 export type ApiKeysQueryInput = {
 	readonly search?: string;
-	readonly permission?: ApiKeyPermission | "all";
 	readonly status?: "all" | "active" | "expired" | "revoked";
 	readonly page?: number;
 	readonly pageSize?: number;
@@ -69,13 +65,10 @@ export type ApiKeysQueryInput = {
 
 /**
  * Keep every caller (router loader, prefetch, and component) on one canonical
- * query key and one server-function payload shape. The route uses `all` as a
- * user-facing filter value, while the API treats an omitted permission as no
- * filter.
+ * query key and one server-function payload shape.
  */
 export type NormalizedApiKeysQueryInput = {
 	readonly search: string;
-	readonly permission?: ApiKeyPermission;
 	readonly status: "all" | "active" | "expired" | "revoked";
 	readonly page: number;
 	readonly pageSize: number;
@@ -88,7 +81,6 @@ export function normalizeApiKeysQueryInput(
 ): NormalizedApiKeysQueryInput {
 	return {
 		search: input.search?.trim().slice(0, 120) ?? "",
-		permission: input.permission === "all" ? undefined : input.permission,
 		status: input.status ?? "all",
 		page: Number.isFinite(input.page)
 			? Math.max(0, Math.trunc(input.page as number))

@@ -63,7 +63,7 @@ export const ticktickMcpOauth: ProviderDefinition = {
 	protocol: "oauth2",
 	auth: { kind: "oauth_bearer" },
 	mcp: { transport: "streamable_http", sessionMode: "stateless" },
-	capabilities: { connect: true, test: true, refresh: true },
+	capabilities: { connect: true, test: true },
 	metadata: {
 		nameKey: "providers_ticktick_mcp_oauth_name",
 		descriptionKey: "providers_ticktick_mcp_oauth_description",

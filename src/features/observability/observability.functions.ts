@@ -5,16 +5,10 @@ import { requireUser } from "#/server/auth-middleware";
 
 import {
 	getStatisticsSummary,
-	listAuditEvents,
-	listProviderStatistics,
 	listStatisticsFilters,
 	listStatisticsRequests,
 	queryAuditEvents,
 } from "./observability.server";
-
-export const listAuditEventsForUser = createServerFn({ method: "GET" })
-	.middleware([requireUser])
-	.handler(({ context }) => listAuditEvents(context.userId));
 
 export const queryAuditEventsForUser = createServerFn({ method: "GET" })
 	.middleware([requireUser])
@@ -28,13 +22,10 @@ export const queryAuditEventsForUser = createServerFn({ method: "GET" })
 					.enum(["success", "failure", "invalid", "degraded"])
 					.optional(),
 			})
+			.strict()
 			.default({}),
 	)
 	.handler(({ context, data }) => queryAuditEvents(context.userId, data));
-
-export const listProviderStatisticsForUser = createServerFn({ method: "GET" })
-	.middleware([requireUser])
-	.handler(({ context }) => listProviderStatistics(context.userId));
 
 export const listStatisticsSummaryForUser = createServerFn({ method: "GET" })
 	.middleware([requireUser])
@@ -47,6 +38,7 @@ export const listStatisticsSummaryForUser = createServerFn({ method: "GET" })
 				instanceId: z.uuid().optional(),
 				status: z.enum(["all", "success", "failure"]).optional(),
 			})
+			.strict()
 			.default({}),
 	)
 	.handler(({ context, data }) => getStatisticsSummary(context.userId, data));
@@ -54,7 +46,10 @@ export const listStatisticsSummaryForUser = createServerFn({ method: "GET" })
 export const listStatisticsFiltersForUser = createServerFn({ method: "GET" })
 	.middleware([requireUser])
 	.validator(
-		z.object({ range: z.enum(["24h", "7d", "30d"]).optional() }).default({}),
+		z
+			.object({ range: z.enum(["24h", "7d", "30d"]).optional() })
+			.strict()
+			.default({}),
 	)
 	.handler(({ context, data }) => listStatisticsFilters(context.userId, data));
 
@@ -71,6 +66,7 @@ export const listStatisticsRequestsForUser = createServerFn({ method: "GET" })
 				instanceId: z.uuid().optional(),
 				status: z.enum(["all", "success", "failure"]).optional(),
 			})
+			.strict()
 			.default({}),
 	)
 	.handler(({ context, data }) => listStatisticsRequests(context.userId, data));

@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { maximumCustomHeadersBytes } from "#/lib/headers";
+
 import { requireUser } from "#/server/auth-middleware";
 import { GatewayError } from "#/server/errors";
 import { verifyConnection } from "./connection-actions.server";
@@ -8,7 +10,6 @@ import {
 	asJsonObject,
 	createConnection,
 	deleteConnection,
-	getConnection,
 	getConnectionDetails,
 	listConnections,
 	setConnectionEnabled,
@@ -25,7 +26,9 @@ const connectionInputSchema = z
 		providerSlug: z.string().min(1).max(63),
 		baseUrl: z.url().max(2_048),
 		config: z.record(z.string().max(80), z.json()).default({}),
-		secrets: z.record(z.string().max(80), z.string().max(16_384)).default({}),
+		secrets: z
+			.record(z.string().max(80), z.string().max(maximumCustomHeadersBytes))
+			.default({}),
 		healthIntervalMinutes: z.number().int().min(5).max(1_440).optional(),
 	})
 	.strict();
@@ -37,11 +40,6 @@ export const listProviderTemplates = createServerFn({ method: "GET" })
 export const listConnectionsForUser = createServerFn({ method: "GET" })
 	.middleware([requireUser])
 	.handler(({ context }) => listConnections(context.userId));
-
-export const getConnectionForUser = createServerFn({ method: "GET" })
-	.middleware([requireUser])
-	.validator(connectionIdSchema)
-	.handler(({ context, data }) => getConnection(context.userId, data.id));
 
 export const createConnectionForUser = createServerFn({ method: "POST" })
 	.middleware([requireUser])
@@ -70,7 +68,9 @@ const updateConnectionSchema = z
 		providerSlug: z.string().min(1).max(63),
 		baseUrl: z.url().max(2_048),
 		config: z.record(z.string().max(80), z.json()).default({}),
-		secrets: z.record(z.string().max(80), z.string().max(16_384)).default({}),
+		secrets: z
+			.record(z.string().max(80), z.string().max(maximumCustomHeadersBytes))
+			.default({}),
 		clearSecrets: z.array(z.string().max(80)).max(50).default([]),
 		healthIntervalMinutes: z
 			.number()
@@ -152,8 +152,3 @@ export const connectClientCredentialsForUser = createServerFn({
 		await connectClientCredentials(context.userId, data.id);
 		return { ok: true };
 	});
-
-export const verifyConnectionForUser = createServerFn({ method: "POST" })
-	.middleware([requireUser])
-	.validator(connectionIdSchema)
-	.handler(({ context, data }) => verifyConnection(context.userId, data.id));

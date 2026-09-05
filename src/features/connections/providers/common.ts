@@ -10,6 +10,24 @@ export const baseUrlField: ProviderField = {
 	outboundUrl: "absolute",
 };
 
+/** Optional encrypted headers shared by every generic and predefined provider. */
+export const customHeadersField: ProviderField = {
+	key: "custom_headers",
+	labelKey: "provider_field_custom_headers",
+	descriptionKey: "provider_field_custom_headers_description",
+	type: "key_value",
+	required: false,
+	secret: true,
+};
+
+export function withCustomHeaders(
+	fields: readonly ProviderField[],
+): readonly ProviderField[] {
+	return fields.some((field) => field.key === customHeadersField.key)
+		? fields
+		: [...fields, customHeadersField];
+}
+
 export const testFields: readonly ProviderField[] = [
 	{
 		key: "test_method",

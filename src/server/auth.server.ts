@@ -6,11 +6,14 @@ import { uuidv7 } from "uuidv7";
 
 import { appSettings, gatewaySchema } from "#/db/schema";
 
-import { getDb } from "../db/index.server";
+import { type GatewayDatabase, getDb } from "../db/index.server";
 import { getBetterAuthSecret } from "./config.server";
 
-export async function getAuth(baseURLOverride?: string) {
-	const db = getDb();
+export async function getAuth(
+	baseURLOverride?: string,
+	database?: GatewayDatabase,
+) {
+	const db = database ?? getDb();
 	let publicOrigin = baseURLOverride;
 	if (publicOrigin === undefined) {
 		const [settings] = await db

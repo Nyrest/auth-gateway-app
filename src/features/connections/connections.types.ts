@@ -41,11 +41,11 @@ export function isJsonValue(value: unknown): value is JsonValue {
 	if (
 		value === null ||
 		typeof value === "boolean" ||
-		typeof value === "number" ||
 		typeof value === "string"
 	) {
 		return true;
 	}
+	if (typeof value === "number") return Number.isFinite(value);
 	if (Array.isArray(value)) {
 		return value.every((item) => isJsonValue(item));
 	}

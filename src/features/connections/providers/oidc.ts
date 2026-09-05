@@ -6,6 +6,7 @@ import type {
 } from "./types";
 
 export type OidcDiscoveryDocument = {
+	readonly issuer: string;
 	readonly authorizationEndpoint: string;
 	readonly tokenEndpoint: string;
 };
@@ -30,12 +31,14 @@ export function parseOidcDiscoveryDocument(
 	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
 		return undefined;
 	}
-	const authorizationEndpoint = (payload as Record<string, unknown>)
-		.authorization_endpoint;
-	const tokenEndpoint = (payload as Record<string, unknown>).token_endpoint;
-	return typeof authorizationEndpoint === "string" &&
+	const document = payload as Record<string, unknown>;
+	const issuer = document.issuer;
+	const authorizationEndpoint = document.authorization_endpoint;
+	const tokenEndpoint = document.token_endpoint;
+	return typeof issuer === "string" &&
+		typeof authorizationEndpoint === "string" &&
 		typeof tokenEndpoint === "string"
-		? { authorizationEndpoint, tokenEndpoint }
+		? { issuer, authorizationEndpoint, tokenEndpoint }
 		: undefined;
 }
 
@@ -114,7 +117,7 @@ export function createOidcProvider(input: {
 		defaultBaseUrl: input.defaultBaseUrl,
 		protocol: input.protocol ?? "oidc",
 		fields: input.fields ?? oidcFields(),
-		capabilities: { connect: true, test: true, refresh: true },
+		capabilities: { connect: true, test: true },
 		metadata: {
 			nameKey: input.nameKey,
 			descriptionKey: input.descriptionKey,

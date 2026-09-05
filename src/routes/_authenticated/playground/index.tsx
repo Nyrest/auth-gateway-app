@@ -1,7 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-	Download,
 	LoaderCircle,
 	Minus,
 	PanelRightClose,
@@ -9,7 +8,8 @@ import {
 	Plus,
 	Send,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { HeaderEditor } from "#/components/headers/header-editor";
 import { PageHeader } from "#/components/layout/app-shell";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -46,10 +46,9 @@ import {
 	toFile,
 	toStoredFile,
 } from "#/features/playground/history";
+import { PlaygroundResponsePanel } from "#/features/playground/playground-response-panel";
 import {
-	headersToText,
 	normalizePlaygroundPath,
-	parseHeaders,
 	validateHeaders,
 } from "#/features/playground/validation";
 import { connectionsQueryOptions } from "#/lib/api";
@@ -64,7 +63,6 @@ const methods = [
 	"HEAD",
 	"OPTIONS",
 ] as const;
-type HeaderMode = "json" | "visual";
 type BodyKind = PlaygroundBody["kind"];
 
 function isReady(connection: ConnectionView): boolean {
@@ -94,23 +92,9 @@ function requestUrl(connectionId: string, path: string): string {
 
 function headerPairs(headers: Headers): PlaygroundHeader[] {
 	return [...headers].map(([key, value]) => ({
-		id: crypto.randomUUID(),
 		key,
 		value,
 	}));
-}
-
-function contentType(headers: readonly PlaygroundHeader[]): string | undefined {
-	return headers.find((header) => header.key.toLowerCase() === "content-type")
-		?.value;
-}
-
-function responseName(headers: readonly PlaygroundHeader[]): string {
-	const disposition = headers.find(
-		(header) => header.key.toLowerCase() === "content-disposition",
-	)?.value;
-	const match = disposition?.match(/filename\*?=(?:UTF-8''|")?([^;"]+)/i);
-	return match?.[1] ? decodeURIComponent(match[1].trim()) : "response.bin";
 }
 
 export const Route = createFileRoute("/_authenticated/playground/")({
@@ -128,10 +112,9 @@ function PlaygroundPage() {
 	const [method, setMethod] = useState<(typeof methods)[number]>("GET");
 	const [path, setPath] = useState("/");
 	const [headers, setHeaders] = useState<PlaygroundHeader[]>([
-		{ id: crypto.randomUUID(), key: "Content-Type", value: "application/json" },
+		{ key: "Content-Type", value: "application/json" },
 	]);
-	const [headersText, setHeadersText] = useState(headersToText(headers));
-	const [headerMode, setHeaderMode] = useState<HeaderMode>("visual");
+	const [headersValid, setHeadersValid] = useState(true);
 	const [body, setBody] = useState<PlaygroundBody>(initialBody("raw"));
 	const [history, setHistory] = useState<PlaygroundHistoryEntry[]>([]);
 	const [selectedHistory, setSelectedHistory] =
@@ -152,21 +135,9 @@ function PlaygroundPage() {
 	const displayResponse = selectedHistory?.response ?? response;
 	const canHaveBody = method !== "GET" && method !== "HEAD";
 
-	function updateHeaders(next: PlaygroundHeader[]): void {
-		setHeaders(next);
-		setHeadersText(headersToText(next));
-	}
-
-	function changeHeaderMode(next: HeaderMode): void {
-		if (next === "visual") {
-			const parsed = parseHeaders(headersText);
-			if (!("value" in parsed)) {
-				setError(m.invalid_headers());
-				return;
-			}
-			setHeaders(parsed.value);
-		}
-		setHeaderMode(next);
+	function updateHeaders(next: readonly PlaygroundHeader[]): void {
+		setHeaders([...next]);
+		setHeadersValid(true);
 	}
 
 	function changeBodyKind(kind: BodyKind): void {
@@ -177,26 +148,22 @@ function PlaygroundPage() {
 		setConnectionId(entry.request.connectionId);
 		setMethod(entry.request.method as (typeof methods)[number]);
 		setPath(entry.request.path);
-		updateHeaders(
-			entry.request.headers.map((header) => ({
-				...header,
-				id: header.id ?? crypto.randomUUID(),
-			})),
-		);
+		updateHeaders(entry.request.headers);
 		setBody(entry.request.body);
 		setSelectedHistory(undefined);
 		setError(undefined);
 	}
 
 	async function send(): Promise<void> {
+		if (!headersValid) {
+			setError(m.invalid_headers());
+			return;
+		}
 		setError(undefined);
 		setStorageError(undefined);
 		setSelectedHistory(undefined);
 		const normalizedPath = normalizePlaygroundPath(path);
-		const parsedHeaders =
-			headerMode === "json"
-				? parseHeaders(headersText)
-				: validateHeaders(headers);
+		const parsedHeaders = validateHeaders(headers);
 		if (!connection || !isReady(connection)) {
 			setError(m.connection_unavailable());
 			return;
@@ -399,88 +366,13 @@ function PlaygroundPage() {
 									{connection.baseUrl}
 								</p>
 							) : null}
-							<Tabs
-								value={headerMode}
-								onValueChange={(value) => changeHeaderMode(value as HeaderMode)}
-							>
-								<div className="flex items-center justify-between gap-3">
-									<span className="text-sm font-medium">{m.headers()}</span>
-									<TabsList>
-										<TabsTrigger value="visual">{m.visual()}</TabsTrigger>
-										<TabsTrigger value="json">JSON</TabsTrigger>
-									</TabsList>
-								</div>
-								<TabsContent value="visual" className="mt-3">
-									<div className="flex flex-col gap-2">
-										{headers.map((header, index) => (
-											<div className="flex gap-2" key={header.id}>
-												<Input
-													value={header.key}
-													onChange={(event) =>
-														updateHeaders(
-															headers.map((item, itemIndex) =>
-																itemIndex === index
-																	? { ...item, key: event.target.value }
-																	: item,
-															),
-														)
-													}
-													placeholder="Key"
-												/>
-												<Input
-													value={header.value}
-													onChange={(event) =>
-														updateHeaders(
-															headers.map((item, itemIndex) =>
-																itemIndex === index
-																	? { ...item, value: event.target.value }
-																	: item,
-															),
-														)
-													}
-													placeholder="Value"
-												/>
-												<Button
-													type="button"
-													size="icon"
-													variant="ghost"
-													onClick={() =>
-														updateHeaders(
-															headers.filter(
-																(_, itemIndex) => itemIndex !== index,
-															),
-														)
-													}
-													aria-label={m.remove()}
-												>
-													<Minus />
-												</Button>
-											</div>
-										))}
-										<Button
-											type="button"
-											size="sm"
-											variant="outline"
-											onClick={() =>
-												updateHeaders([
-													...headers,
-													{ id: crypto.randomUUID(), key: "", value: "" },
-												])
-											}
-										>
-											<Plus data-icon="inline-start" />
-											{m.add_header()}
-										</Button>
-									</div>
-								</TabsContent>
-								<TabsContent value="json" className="mt-3">
-									<Textarea
-										className="min-h-40 font-mono text-xs"
-										value={headersText}
-										onChange={(event) => setHeadersText(event.target.value)}
-									/>
-								</TabsContent>
-							</Tabs>
+							<HeaderEditor
+								value={headers}
+								onChange={updateHeaders}
+								policy="playground"
+								onValidationChange={setHeadersValid}
+								error={!headersValid ? m.invalid_headers() : undefined}
+							/>
 							<Separator />
 							<Tabs
 								value={body.kind}
@@ -546,7 +438,7 @@ function PlaygroundPage() {
 							</Button>
 						</CardContent>
 					</Card>
-					<ResponsePanel response={displayResponse} />
+					<PlaygroundResponsePanel response={displayResponse} />
 				</div>
 				{historyOpen ? (
 					<Card className="min-w-0">
@@ -771,102 +663,5 @@ function BinaryEditor({
 				{body.file?.name ?? ""}
 			</span>
 		</div>
-	);
-}
-
-function ResponsePanel({
-	response,
-}: {
-	readonly response?: PlaygroundResponse;
-}) {
-	const [text, setText] = useState("");
-	useEffect(() => {
-		void response?.body
-			?.text()
-			.then((value) => setText(value))
-			.catch(() => setText(""));
-	}, [response]);
-	const type = contentType(response?.headers ?? []);
-	const printable = Boolean(
-		type?.startsWith("text/") ||
-			type?.includes("json") ||
-			type?.includes("xml"),
-	);
-	const content = useMemo(() => {
-		if (!type?.includes("json")) return text;
-		try {
-			return JSON.stringify(JSON.parse(text), null, 2);
-		} catch {
-			return text;
-		}
-	}, [text, type]);
-	function download(): void {
-		if (!response?.body) return;
-		const url = URL.createObjectURL(response.body);
-		const link = document.createElement("a");
-		link.href = url;
-		link.download = responseName(response.headers);
-		link.click();
-		URL.revokeObjectURL(url);
-	}
-	return (
-		<Card>
-			<CardHeader>
-				<div className="flex items-center justify-between gap-3">
-					<CardTitle>{m.response()}</CardTitle>
-					{response ? (
-						<div className="flex items-center gap-2">
-							<Badge
-								variant={response.status < 400 ? "secondary" : "destructive"}
-							>
-								{response.status}
-							</Badge>
-							<span className="text-xs text-muted-foreground">
-								{response.latencyMs} ms · {response.size} B
-							</span>
-						</div>
-					) : null}
-				</div>
-			</CardHeader>
-			<CardContent>
-				{response ? (
-					<Tabs defaultValue="body">
-						<TabsList>
-							<TabsTrigger value="body">{m.body()}</TabsTrigger>
-							<TabsTrigger value="headers">{m.headers()}</TabsTrigger>
-						</TabsList>
-						<TabsContent value="body" className="mt-3">
-							{printable ? (
-								<pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap">
-									{content}
-								</pre>
-							) : (
-								<Button type="button" variant="outline" onClick={download}>
-									<Download data-icon="inline-start" />
-									{m.download()}
-								</Button>
-							)}
-						</TabsContent>
-						<TabsContent value="headers" className="mt-3">
-							<div className="flex flex-col gap-2 text-xs">
-								{response.headers.map((header) => (
-									<div
-										className="grid grid-cols-[12rem_minmax(0,1fr)] gap-3"
-										key={header.key}
-									>
-										<span className="font-medium">{header.key}</span>
-										<span className="break-all text-muted-foreground">
-											{header.value}
-										</span>
-									</div>
-								))}
-							</div>
-						</TabsContent>
-					</Tabs>
-				) : (
-					<p className="text-sm text-muted-foreground">{m.no_response()}</p>
-				)}
-			</CardContent>
-		</Card>
 	);
 }

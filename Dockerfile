@@ -21,4 +21,4 @@ USER bun
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD bun -e "fetch('http://127.0.0.1:3000/health/live').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
 STOPSIGNAL SIGTERM
-CMD ["sh", "-c", "bun src/db/migrate.ts && exec bun src/runtime/bun/server.ts"]
+CMD ["bun", "src/runtime/bun/server.ts"]

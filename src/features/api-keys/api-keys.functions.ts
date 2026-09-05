@@ -4,7 +4,6 @@ import { z } from "zod";
 import { requireUser } from "#/server/auth-middleware";
 
 import {
-	apiKeyPermissions,
 	createApiKey,
 	deleteApiKey,
 	listApiKeyScopeOptions,
@@ -19,7 +18,6 @@ export const listApiKeysForUser = createServerFn({ method: "GET" })
 		z
 			.object({
 				search: z.string().max(120).optional(),
-				permission: z.enum(apiKeyPermissions).optional(),
 				status: z.enum(["all", "active", "expired", "revoked"]).optional(),
 				page: z.number().int().min(0).optional(),
 				pageSize: z.number().int().min(1).max(100).optional(),
@@ -37,10 +35,6 @@ export const createApiKeyForUser = createServerFn({ method: "POST" })
 		z
 			.object({
 				label: z.string().min(1).max(120),
-				permissions: z
-					.array(z.enum(apiKeyPermissions))
-					.max(20)
-					.default(["proxy"]),
 				providerScopeMode: z.enum(["all", "selected"]).default("all"),
 				providerSlugs: z.array(z.string().min(1).max(63)).max(100).default([]),
 				instanceIds: z.array(z.uuid()).max(100).default([]),
@@ -57,10 +51,6 @@ export const updateApiKeyForUser = createServerFn({ method: "POST" })
 			.object({
 				id: z.uuid(),
 				label: z.string().min(1).max(120),
-				permissions: z
-					.array(z.enum(apiKeyPermissions))
-					.max(20)
-					.default(["proxy"]),
 				providerScopeMode: z.enum(["all", "selected"]).default("all"),
 				providerSlugs: z.array(z.string().min(1).max(63)).max(100).default([]),
 				instanceIds: z.array(z.uuid()).max(100).default([]),

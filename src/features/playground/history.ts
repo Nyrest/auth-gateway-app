@@ -1,8 +1,4 @@
-export type PlaygroundHeader = {
-	readonly id?: string;
-	readonly key: string;
-	readonly value: string;
-};
+export type PlaygroundHeader = import("#/lib/headers").HeaderEntry;
 
 export type StoredFile = {
 	readonly lastModified: number;

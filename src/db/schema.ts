@@ -69,22 +69,16 @@ export const appSettings = pgTable("app_settings", {
 	...timestampColumns,
 });
 
-export const userSettings = pgTable(
-	"user_settings",
-	{
-		userId: uuid("user_id")
-			.primaryKey()
-			.references(() => authUsers.id, { onDelete: "cascade" }),
-		healthChecksEnabled: boolean("health_checks_enabled")
-			.notNull()
-			.default(true),
-		defaultHealthIntervalMinutes: integer("default_health_interval_minutes")
-			.notNull()
-			.default(60),
-		...timestampColumns,
-	},
-	(table) => [index("user_settings_user_id_idx").on(table.userId)],
-);
+export const userSettings = pgTable("user_settings", {
+	userId: uuid("user_id")
+		.primaryKey()
+		.references(() => authUsers.id, { onDelete: "cascade" }),
+	healthChecksEnabled: boolean("health_checks_enabled").notNull().default(true),
+	defaultHealthIntervalMinutes: integer("default_health_interval_minutes")
+		.notNull()
+		.default(60),
+	...timestampColumns,
+});
 
 export const providerInstances = pgTable(
 	"provider_instance",
@@ -99,7 +93,6 @@ export const providerInstances = pgTable(
 		name: text("name").notNull(),
 		baseUrl: text("base_url").notNull(),
 		config: jsonb("config").notNull().default(sql`'{}'::jsonb`),
-		providerState: jsonb("provider_state").notNull().default(sql`'{}'::jsonb`),
 		status: connectionStatus("status").notNull().default("draft"),
 		health: healthStatus("health").notNull().default("unknown"),
 		enabled: boolean("enabled").notNull().default(true),
@@ -112,17 +105,35 @@ export const providerInstances = pgTable(
 		healthDueAt: timestamp("health_due_at", { withTimezone: true }),
 		healthLeaseUntil: timestamp("health_lease_until", { withTimezone: true }),
 		healthFailureCount: integer("health_failure_count").notNull().default(0),
-		scheduleRevision: integer("schedule_revision").notNull().default(0),
 		...timestampColumns,
 	},
 	(table) => [
-		uniqueIndex("provider_instance_instance_slug_idx").on(table.instanceSlug),
+		uniqueIndex("provider_instance_user_instance_slug_idx").on(
+			table.userId,
+			table.instanceSlug,
+		),
 		index("provider_instance_user_pool_idx").on(
 			table.userId,
 			table.providerSlug,
 		),
-		index("provider_instance_refresh_due_idx").on(table.refreshDueAt),
-		index("provider_instance_health_due_idx").on(table.healthDueAt),
+		index("provider_instance_active_pool_idx").on(
+			table.userId,
+			table.providerSlug,
+			table.enabled,
+			table.status,
+			table.health,
+		),
+		index("provider_instance_refresh_claim_idx").on(
+			table.enabled,
+			table.status,
+			table.refreshDueAt,
+			table.refreshLeaseUntil,
+		),
+		index("provider_instance_health_claim_idx").on(
+			table.enabled,
+			table.healthDueAt,
+			table.healthLeaseUntil,
+		),
 	],
 );
 
@@ -174,6 +185,7 @@ export const oauthStates = pgTable(
 			table.instanceId,
 			table.expiresAt,
 		),
+		index("oauth_state_expiry_idx").on(table.expiresAt),
 	],
 );
 
@@ -188,9 +200,6 @@ export const apiKeys = pgTable(
 		prefix: text("prefix").notNull(),
 		digest: text("digest").notNull(),
 		keyKind: apiKeyKind("key_kind").notNull().default("user"),
-		permissions: jsonb("permissions")
-			.notNull()
-			.default(sql`'["proxy"]'::jsonb`),
 		providerScopeMode: text("provider_scope_mode").notNull().default("all"),
 		providerSlugs: jsonb("provider_slugs").notNull().default(sql`'[]'::jsonb`),
 		instanceIds: jsonb("instance_ids").notNull().default(sql`'[]'::jsonb`),
@@ -272,6 +281,12 @@ export const requestMetrics = pgTable(
 			table.statusCode,
 			table.occurredAt,
 		),
+		index("request_metric_user_instance_occurred_idx").on(
+			table.userId,
+			table.instanceId,
+			table.occurredAt,
+		),
+		index("request_metric_occurred_idx").on(table.occurredAt),
 	],
 );
 

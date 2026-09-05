@@ -1,12 +1,17 @@
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 
-import { getDb } from "#/db/index.server";
+import { type GatewayDatabase, getDb } from "#/db/index.server";
 import {
 	providerInstances,
 	providerSecrets,
 	requestMetrics,
 } from "#/db/schema";
+import {
+	maximumCustomHeadersBytes,
+	parseStoredHeaders,
+	serializeStoredHeaders,
+} from "#/lib/headers";
 import { recordAuditEvent } from "#/server/audit.server";
 import { createAssociatedData, encryptSecret } from "#/server/crypto.server";
 import { GatewayError } from "#/server/errors";
@@ -19,12 +24,7 @@ import {
 	type JsonObject,
 	type JsonValue,
 } from "./connections.types";
-import {
-	readConnectionSecrets,
-	readPublicConnectionFields,
-	readPublicConnectionFieldsForInstances,
-	saveConnectionSecrets,
-} from "./secrets.server";
+import { readConnectionSecrets, saveConnectionSecrets } from "./secrets.server";
 import {
 	getProviderTemplate,
 	type ProviderDefinition,
@@ -91,6 +91,9 @@ function isEmptyProviderValue(value: unknown): boolean {
 	);
 }
 
+const maximumProviderTextBytes = 16 * 1024;
+const maximumProviderJsonBytes = 64 * 1024;
+
 function invalidProviderField(fieldKey: string, detail: string): never {
 	throw new GatewayError(
 		400,
@@ -99,17 +102,46 @@ function invalidProviderField(fieldKey: string, detail: string): never {
 	);
 }
 
-function assertKeyValueString(fieldKey: string, value: string): void {
-	const lines = value
-		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter(Boolean);
-	for (const line of lines) {
-		const separator = line.indexOf(":");
-		if (separator < 1 || !line.slice(separator + 1).trim()) {
-			invalidProviderField(fieldKey, "must use one key: value pair per line");
-		}
+function assertTextSize(fieldKey: string, value: string): void {
+	const maximumBytes =
+		fieldKey === "custom_headers"
+			? maximumCustomHeadersBytes
+			: maximumProviderTextBytes;
+	if (new TextEncoder().encode(value).byteLength > maximumBytes) {
+		invalidProviderField(fieldKey, "is too large");
 	}
+}
+
+function assertJsonSize(fieldKey: string, value: unknown): void {
+	let serialized: string;
+	try {
+		serialized = JSON.stringify(value);
+	} catch {
+		invalidProviderField(fieldKey, "must contain valid JSON");
+	}
+	if (
+		new TextEncoder().encode(serialized).byteLength > maximumProviderJsonBytes
+	) {
+		invalidProviderField(fieldKey, "is too large");
+	}
+}
+
+function assertKeyValueString(fieldKey: string, value: string): void {
+	const parsed = parseStoredHeaders(value, "provider");
+	if (!("value" in parsed)) {
+		invalidProviderField(fieldKey, "must contain valid custom headers");
+	}
+}
+
+function normalizeSecretValues(
+	secrets: Readonly<Record<string, string>>,
+): Record<string, string> {
+	const value = secrets.custom_headers;
+	if (!value?.trim()) return { ...secrets };
+	const parsed = parseStoredHeaders(value, "provider");
+	return "value" in parsed
+		? { ...secrets, custom_headers: serializeStoredHeaders(parsed.value) }
+		: { ...secrets };
 }
 
 function assertProviderFieldValue(
@@ -121,6 +153,7 @@ function assertProviderFieldValue(
 		if (typeof value !== "string") {
 			invalidProviderField(field.key, "must be text");
 		}
+		assertTextSize(field.key, value);
 		if (field.type === "json") {
 			try {
 				JSON.parse(value);
@@ -135,6 +168,7 @@ function assertProviderFieldValue(
 		case "string":
 			if (typeof value !== "string")
 				invalidProviderField(field.key, "must be text");
+			assertTextSize(field.key, value);
 			break;
 		case "number":
 			if (typeof value !== "number" || !Number.isFinite(value))
@@ -147,6 +181,7 @@ function assertProviderFieldValue(
 		case "json":
 			if (!isJsonValue(value))
 				invalidProviderField(field.key, "must contain valid JSON");
+			assertJsonSize(field.key, value);
 			break;
 		case "key_value":
 			if (
@@ -161,6 +196,7 @@ function assertProviderFieldValue(
 			) {
 				invalidProviderField(field.key, "must contain key/value entries");
 			}
+			assertJsonSize(field.key, value);
 			break;
 		case "single_select":
 			if (
@@ -203,6 +239,16 @@ function assertFields(
 	template: ProviderTemplate,
 	data: CreateConnectionData,
 ): JsonObject {
+	if (
+		Object.keys(data.config).length > 50 ||
+		Object.keys(data.secrets).length > 50
+	) {
+		throw new GatewayError(
+			400,
+			"TOO_MANY_PROVIDER_FIELDS",
+			"The connection contains too many provider fields.",
+		);
+	}
 	const allowedKeys = new Set(template.fields.map((field) => field.key));
 	const config: Record<string, JsonValue> = {};
 
@@ -328,29 +374,10 @@ async function isBlockedByNetworkPolicy(
 	}
 }
 
-function migratePublicFields(
-	template: ProviderTemplate,
-	config: JsonObject,
-	secrets: Record<string, string>,
-): JsonObject {
-	const next = { ...config };
-	for (const field of template.fields) {
-		if (
-			!field.secret &&
-			next[field.key] === undefined &&
-			secrets[field.key] !== undefined
-		) {
-			next[field.key] = secrets[field.key];
-		}
-	}
-	return next;
-}
-
 function toView(
 	instance: typeof providerInstances.$inferSelect,
 	secretKeys: readonly string[],
 	policyBlocked = false,
-	configOverride?: JsonObject,
 ): ConnectionView {
 	return {
 		id: instance.id,
@@ -359,7 +386,7 @@ function toView(
 		instanceSlug: instance.instanceSlug,
 		templateSlug: instance.templateSlug,
 		baseUrl: instance.baseUrl,
-		config: configOverride ?? asJsonObject(instance.config),
+		config: asJsonObject(instance.config),
 		status: instance.status,
 		health: instance.health,
 		enabled: instance.enabled,
@@ -383,27 +410,6 @@ function actualSecretKeys(
 		template.fields.filter((field) => field.secret).map((field) => field.key),
 	);
 	return keys.filter((key) => secretFields.has(key));
-}
-
-async function publicConfigForInstance(
-	userId: string,
-	instance: typeof providerInstances.$inferSelect,
-): Promise<JsonObject> {
-	const config = asJsonObject(instance.config);
-	const template = getProviderTemplate(instance.templateSlug);
-	if (!template) return config;
-	const publicKeys = new Set(
-		template.fields
-			.filter((field) => !field.secret && config[field.key] === undefined)
-			.map((field) => field.key),
-	);
-	if (publicKeys.size === 0) return config;
-	const legacyValues = await readPublicConnectionFields(
-		userId,
-		instance.id,
-		publicKeys,
-	);
-	return { ...config, ...legacyValues };
 }
 
 export async function listConnections(
@@ -441,32 +447,13 @@ export async function listConnections(
 		keysByInstance.set(secret.instanceId, keys);
 	}
 
-	const legacyPublic = await readPublicConnectionFieldsForInstances(
-		userId,
-		instances.map((instance) => {
-			const config = asJsonObject(instance.config);
-			const template = getProviderTemplate(instance.templateSlug);
-			return {
-				id: instance.id,
-				publicFieldKeys: new Set(
-					template?.fields
-						.filter((field) => !field.secret && config[field.key] === undefined)
-						.map((field) => field.key) ?? [],
-				),
-			};
-		}),
-	);
 	return Promise.all(
 		instances.map(async (instance) => {
 			const config = asJsonObject(instance.config);
-			const configOverride = {
-				...config,
-				...(legacyPublic.get(instance.id) ?? {}),
-			};
 			const policyBlocked = await isBlockedByNetworkPolicy(
 				getProviderTemplate(instance.templateSlug),
 				instance.baseUrl,
-				configOverride,
+				config,
 			);
 			return toView(
 				instance,
@@ -475,7 +462,6 @@ export async function listConnections(
 					keysByInstance.get(instance.id) ?? [],
 				),
 				policyBlocked,
-				configOverride,
 			);
 		}),
 	);
@@ -509,7 +495,7 @@ export async function getConnection(
 				eq(providerSecrets.instanceId, id),
 			),
 		);
-	const config = await publicConfigForInstance(userId, instance);
+	const config = asJsonObject(instance.config);
 	const policyBlocked = await isBlockedByNetworkPolicy(
 		getProviderTemplate(instance.templateSlug),
 		instance.baseUrl,
@@ -522,7 +508,6 @@ export async function getConnection(
 			secrets.map((secret) => secret.fieldKey),
 		),
 		policyBlocked,
-		config,
 	);
 }
 
@@ -574,10 +559,8 @@ export async function createConnection(
 		);
 	}
 	const providerSlug = assertProviderSlug(data.providerSlug);
-	const config = assertFields(template, {
-		...data,
-		config: migratePublicFields(template, data.config, data.secrets),
-	});
+	const secrets = normalizeSecretValues(data.secrets);
+	const config = assertFields(template, { ...data, secrets });
 	const baseUrl = (
 		await validateConnectionOutboundUrls(template, data.baseUrl, config)
 	)
@@ -588,7 +571,7 @@ export async function createConnection(
 		config,
 		name,
 		providerSlug,
-		secrets: data.secrets,
+		secrets,
 	});
 	const id = uuidv7();
 	const now = new Date();
@@ -598,7 +581,7 @@ export async function createConnection(
 	);
 
 	const secretRows = await Promise.all(
-		Object.entries(data.secrets)
+		Object.entries(secrets)
 			.filter(([fieldKey]) =>
 				template.fields.some((field) => field.key === fieldKey && field.secret),
 			)
@@ -724,10 +707,22 @@ export async function updateConnection(
 			"Connection names must be between 1 and 120 characters.",
 		);
 	const providerSlug = assertProviderSlug(data.providerSlug);
+	const clear = data.clearSecrets ?? [];
+	const secretFieldKeys = new Set(
+		template.fields.filter((field) => field.secret).map((field) => field.key),
+	);
+	if (clear.some((fieldKey) => !secretFieldKeys.has(fieldKey))) {
+		throw new GatewayError(
+			400,
+			"UNKNOWN_PROVIDER_FIELD",
+			"Only registered secret fields can be cleared.",
+		);
+	}
 	const oldSecrets = await readConnectionSecrets(userId, id);
+	const secretUpdates = normalizeSecretValues(data.secrets ?? {});
 	const nextSecrets = { ...Object.fromEntries(oldSecrets) };
-	for (const key of data.clearSecrets ?? []) delete nextSecrets[key];
-	for (const [key, value] of Object.entries(data.secrets ?? {})) {
+	for (const key of clear) delete nextSecrets[key];
+	for (const [key, value] of Object.entries(secretUpdates)) {
 		if (value.trim()) nextSecrets[key] = value;
 	}
 	const config = assertFields(template, {
@@ -735,7 +730,7 @@ export async function updateConnection(
 		name,
 		providerSlug,
 		baseUrl: data.baseUrl,
-		config: migratePublicFields(template, data.config, nextSecrets),
+		config: data.config,
 		secrets: nextSecrets,
 	});
 	const baseUrl = (
@@ -755,68 +750,57 @@ export async function updateConnection(
 		data.healthIntervalMinutes === undefined
 			? existing.healthIntervalMinutes
 			: data.healthIntervalMinutes;
-	const [updated] = await db
-		.update(providerInstances)
-		.set({
-			name,
-			providerSlug,
-			baseUrl,
-			config,
-			healthIntervalMinutes: interval,
-			healthDueAt:
-				interval == null
-					? existing.healthDueAt
-					: new Date(now.getTime() + interval * 60_000),
-			updatedAt: now,
-		})
-		.where(
-			and(eq(providerInstances.id, id), eq(providerInstances.userId, userId)),
-		)
-		.returning();
-	if (!updated)
-		throw new GatewayError(
-			500,
-			"CONNECTION_UPDATE_FAILED",
-			"The connection could not be updated.",
-		);
-	const clear = data.clearSecrets ?? [];
-	if (clear.length > 0)
-		await db
-			.delete(providerSecrets)
-			.where(
-				and(
-					eq(providerSecrets.instanceId, id),
-					eq(providerSecrets.userId, userId),
-					inArray(providerSecrets.fieldKey, [...clear]),
-				),
-			);
-	await saveConnectionSecrets(
-		userId,
-		id,
-		new Map(
-			Object.entries(data.secrets ?? {}).filter(
-				([fieldKey, value]) =>
-					Boolean(value) &&
-					template.fields.some(
-						(field) => field.key === fieldKey && field.secret,
-					),
-			),
+	const persistedSecretUpdates = new Map(
+		Object.entries(secretUpdates).filter(
+			([fieldKey, value]) =>
+				value.trim().length > 0 && secretFieldKeys.has(fieldKey),
 		),
 	);
-	const publicSecretKeys = template.fields
-		.filter((field) => !field.secret)
-		.map((field) => field.key);
-	if (publicSecretKeys.length > 0) {
-		await db
-			.delete(providerSecrets)
+	const [updated] = await db.transaction(async (tx) => {
+		const [connection] = await tx
+			.update(providerInstances)
+			.set({
+				name,
+				providerSlug,
+				baseUrl,
+				config,
+				healthIntervalMinutes: interval,
+				healthDueAt:
+					interval == null
+						? existing.healthDueAt
+						: new Date(now.getTime() + interval * 60_000),
+				updatedAt: now,
+			})
 			.where(
-				and(
-					eq(providerSecrets.instanceId, id),
-					eq(providerSecrets.userId, userId),
-					inArray(providerSecrets.fieldKey, publicSecretKeys),
-				),
+				and(eq(providerInstances.id, id), eq(providerInstances.userId, userId)),
+			)
+			.returning();
+		if (!connection) {
+			throw new GatewayError(
+				500,
+				"CONNECTION_UPDATE_FAILED",
+				"The connection could not be updated.",
 			);
-	}
+		}
+		if (clear.length > 0) {
+			await tx
+				.delete(providerSecrets)
+				.where(
+					and(
+						eq(providerSecrets.instanceId, id),
+						eq(providerSecrets.userId, userId),
+						inArray(providerSecrets.fieldKey, [...clear]),
+					),
+				);
+		}
+		await saveConnectionSecrets(
+			userId,
+			id,
+			persistedSecretUpdates,
+			tx as GatewayDatabase,
+		);
+		return [connection];
+	});
 	recordAuditEvent({
 		action: "connection.updated",
 		metadata: { providerSlug },

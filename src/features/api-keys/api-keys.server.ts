@@ -20,73 +20,27 @@ import { sha256 } from "#/server/config.server";
 import { createApiKeySecret } from "#/server/crypto.server";
 import { GatewayError } from "#/server/errors";
 
-import {
-	type ApiKeyListResult,
-	type ApiKeyPermission,
-	type ApiKeyProviderScopeMode,
-	type ApiKeysQueryInput,
-	type ApiKeyView,
-	apiKeyPermissions,
-	type CreatedApiKey,
+import type {
+	ApiKeyListResult,
+	ApiKeyProviderScopeMode,
+	ApiKeysQueryInput,
+	ApiKeyView,
+	CreatedApiKey,
 } from "./api-keys.types";
 
 export type {
 	ApiKeyListResult,
-	ApiKeyPermission,
 	ApiKeyPolicy,
 	ApiKeyProviderScopeMode,
 	ApiKeysQueryInput,
 	ApiKeyView,
 	CreatedApiKey,
 } from "./api-keys.types";
-export { apiKeyPermissions } from "./api-keys.types";
 
 function asStringArray(value: unknown): string[] {
 	return Array.isArray(value)
 		? value.filter((item): item is string => typeof item === "string")
 		: [];
-}
-
-function asPermissions(value: unknown): ApiKeyPermission[] {
-	if (!Array.isArray(value)) return ["proxy"];
-	const known = new Set<string>(apiKeyPermissions);
-	return [
-		...new Set(
-			value.filter(
-				(item): item is ApiKeyPermission =>
-					typeof item === "string" && known.has(item),
-			),
-		),
-	];
-}
-
-function normalizePermissions(
-	value: readonly string[] | undefined,
-): ApiKeyPermission[] {
-	const known = new Set<string>(apiKeyPermissions);
-	const permissions = [
-		...new Set(
-			(value ?? ["proxy"]).filter((item): item is ApiKeyPermission =>
-				known.has(item),
-			),
-		),
-	];
-	if (permissions.length === 0) {
-		throw new GatewayError(
-			400,
-			"INVALID_API_KEY_PERMISSIONS",
-			"Select at least one API key permission.",
-		);
-	}
-	for (const [write, read] of [
-		["connections:write", "connections:read"],
-		["api_keys:write", "api_keys:read"],
-		["settings:write", "settings:read"],
-	] as const) {
-		if (permissions.includes(write) && !permissions.includes(read))
-			permissions.push(read);
-	}
-	return permissions;
 }
 
 function normalizeScopeMode(
@@ -100,7 +54,6 @@ function toView(key: typeof apiKeys.$inferSelect): ApiKeyView {
 		id: key.id,
 		label: key.label,
 		prefix: key.prefix,
-		permissions: asPermissions(key.permissions),
 		providerScopeMode: normalizeScopeMode(key.providerScopeMode),
 		providerSlugs: asStringArray(key.providerSlugs),
 		instanceIds: asStringArray(key.instanceIds),
@@ -123,7 +76,6 @@ function normalizeListInput(input: ApiKeysQueryInput = {}) {
 		page,
 		pageSize,
 		search,
-		permission: input.permission,
 		sort: input.sort ?? "prefix",
 		direction: input.direction === "desc" ? "desc" : "asc",
 		status: input.status ?? "all",
@@ -143,14 +95,8 @@ export async function listApiKeys(
 			ilike(apiKeys.label, pattern),
 			ilike(apiKeys.prefix, pattern),
 			sql`cast(${apiKeys.providerSlugs} as text) ilike ${pattern}`,
-			sql`cast(${apiKeys.permissions} as text) ilike ${pattern}`,
 		);
 		if (searchFilter) filters.push(searchFilter);
-	}
-	if (normalized.permission) {
-		filters.push(
-			sql`${apiKeys.permissions} @> ${JSON.stringify([normalized.permission])}::jsonb`,
-		);
 	}
 	if (normalized.status === "revoked")
 		filters.push(isNotNull(apiKeys.revokedAt));
@@ -211,7 +157,6 @@ export async function createApiKey(
 	userId: string,
 	input: {
 		readonly label: string;
-		readonly permissions?: readonly string[];
 		readonly providerScopeMode?: ApiKeyProviderScopeMode;
 		readonly providerSlugs: readonly string[];
 		readonly instanceIds: readonly string[];
@@ -234,14 +179,12 @@ export async function createApiKey(
 		),
 	];
 	const instanceIds = [...new Set(input.instanceIds)];
-	const permissions = normalizePermissions(input.permissions);
 	const providerScopeMode = normalizeScopeMode(input.providerScopeMode);
 	const normalizedScope = await validateApiKeyScope(
 		userId,
 		providerScopeMode,
 		providerSlugs,
 		instanceIds,
-		permissions,
 	);
 	if (input.expiresAt && input.expiresAt <= new Date()) {
 		throw new GatewayError(
@@ -267,7 +210,6 @@ export async function createApiKey(
 			digest: sha256(secret),
 			providerSlugs: normalizedScope.providerSlugs,
 			instanceIds: normalizedScope.instanceIds,
-			permissions,
 			providerScopeMode,
 			expiresAt: input.expiresAt ?? null,
 			createdAt: now,
@@ -299,7 +241,6 @@ export async function updateApiKey(
 	id: string,
 	input: {
 		readonly label: string;
-		readonly permissions?: readonly string[];
 		readonly providerScopeMode?: ApiKeyProviderScopeMode;
 		readonly providerSlugs: readonly string[];
 		readonly instanceIds: readonly string[];
@@ -321,7 +262,6 @@ export async function updateApiKey(
 			"API key expiry must be in the future.",
 		);
 	}
-	const permissions = normalizePermissions(input.permissions);
 	const providerScopeMode = normalizeScopeMode(input.providerScopeMode);
 	const providerSlugs = [
 		...new Set(
@@ -336,13 +276,11 @@ export async function updateApiKey(
 		providerScopeMode,
 		providerSlugs,
 		instanceIds,
-		permissions,
 	);
 	const [updated] = await getDb()
 		.update(apiKeys)
 		.set({
 			label,
-			permissions,
 			providerScopeMode,
 			providerSlugs: normalizedScope.providerSlugs,
 			instanceIds: normalizedScope.instanceIds,
@@ -399,18 +337,13 @@ async function validateApiKeyScope(
 	providerScopeMode: ApiKeyProviderScopeMode,
 	providerSlugs: readonly string[],
 	instanceIds: readonly string[],
-	permissions: readonly ApiKeyPermission[],
 ): Promise<{ providerSlugs: string[]; instanceIds: string[] }> {
 	const normalizedProviders =
 		providerScopeMode === "all" ? [] : [...new Set(providerSlugs)];
 	if (providerScopeMode === "all" && instanceIds.length === 0) {
 		return { providerSlugs: [], instanceIds: [] };
 	}
-	if (
-		providerScopeMode === "selected" &&
-		permissions.includes("proxy") &&
-		normalizedProviders.length === 0
-	) {
+	if (providerScopeMode === "selected" && normalizedProviders.length === 0) {
 		throw new GatewayError(
 			400,
 			"INVALID_API_KEY_SCOPE",
@@ -479,13 +412,6 @@ export async function listApiKeyScopeOptions(userId: string) {
 		providers: [...new Set(rows.map((row) => row.providerSlug))],
 		instances: rows,
 	};
-}
-
-export function hasApiKeyPermission(
-	key: { readonly permissions?: unknown },
-	permission: ApiKeyPermission,
-): boolean {
-	return asPermissions(key.permissions).includes(permission);
 }
 
 export async function revokeApiKey(userId: string, id: string): Promise<void> {
@@ -562,7 +488,6 @@ export async function getOrCreatePlaygroundApiKey(userId: string) {
 			prefix: `agw_playground_${id.slice(0, 8)}`,
 			digest: sha256(createApiKeySecret()),
 			keyKind: "playground",
-			permissions: ["proxy"],
 			providerScopeMode: "all",
 			providerSlugs: [],
 			instanceIds: [],

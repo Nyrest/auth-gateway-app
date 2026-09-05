@@ -1,4 +1,5 @@
 import type { HostnameResolver } from "#/runtime/contract.server";
+import { readJsonResponse } from "./outbound-request.server";
 
 type DnsAnswer = {
 	readonly data?: unknown;
@@ -18,14 +19,23 @@ async function resolveRecord(
 	const url = new URL(dnsOverHttpsEndpoint);
 	url.searchParams.set("name", hostname);
 	url.searchParams.set("type", type);
-	const response = await fetch(url, {
-		headers: { accept: "application/dns-json" },
-		redirect: "error",
-	});
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 5_000);
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			headers: { accept: "application/dns-json" },
+			redirect: "error",
+			signal: controller.signal,
+		});
+	} finally {
+		clearTimeout(timeout);
+	}
 	if (!response.ok) {
+		await response.body?.cancel().catch(() => undefined);
 		throw new Error("DNS resolution failed");
 	}
-	const payload = (await response.json()) as DnsResponse;
+	const payload = (await readJsonResponse(response)) as DnsResponse;
 	const expectedType = type === "A" ? 1 : 28;
 	return (payload.Answer ?? []).flatMap((answer) =>
 		answer.type === expectedType && typeof answer.data === "string"

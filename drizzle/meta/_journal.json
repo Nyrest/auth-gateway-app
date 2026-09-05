@@ -5,50 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1788021848501,
-      "tag": "0000_plain_hellion",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1788023260186,
-      "tag": "0001_lethal_excalibur",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1788104623945,
-      "tag": "0002_crazy_chat",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1788148125312,
-      "tag": "0003_open_korath",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1788157877700,
-      "tag": "0004_rare_namor",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1788507521535,
-      "tag": "0005_famous_korvac",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1788519179941,
-      "tag": "0006_violet_sinister_six",
+      "when": 1788586558762,
+      "tag": "0000_outgoing_madame_hydra",
       "breakpoints": true
     }
   ]

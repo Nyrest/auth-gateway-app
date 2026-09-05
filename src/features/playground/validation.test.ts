@@ -1,32 +1,32 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-	headersToText,
-	normalizePlaygroundPath,
-	parseHeaders,
-	validateHeaders,
-} from "./validation";
+import { headersToJson, parseHeaderJson } from "#/lib/headers";
+import { normalizePlaygroundPath, validateHeaders } from "./validation";
 
 describe("Playground request validation", () => {
 	test("round-trips valid headers through JSON", () => {
 		const headers = [
-			{ id: "first", key: "Content-Type", value: "application/json" },
-			{ id: "second", key: "X-Trace", value: "request: 1" },
+			{ key: "Content-Type", value: "application/json" },
+			{ key: "X-Trace", value: "request: 1" },
 		];
-		const parsed = parseHeaders(headersToText(headers));
+		const parsed = parseHeaderJson(headersToJson(headers), "playground");
 		expect("value" in parsed && parsed.value).toEqual(
 			headers.map(({ key, value }) => expect.objectContaining({ key, value })),
 		);
 	});
 
 	test("rejects unsafe, duplicate, and non-string JSON headers", () => {
-		expect(parseHeaders('{"X-Trace":"first","x-trace":"second"}')).toEqual({
+		expect(
+			parseHeaderJson('{"X-Trace":"first","x-trace":"second"}', "playground"),
+		).toEqual({
 			error: "invalid_headers",
 		});
-		expect(parseHeaders('{"X-Trace":"a \\"key\\": value"}')).toMatchObject({
+		expect(
+			parseHeaderJson('{"X-Trace":"a \\"key\\": value"}', "playground"),
+		).toMatchObject({
 			value: [{ key: "X-Trace", value: 'a "key": value' }],
 		});
-		expect(parseHeaders('{"accept":true}')).toEqual({
+		expect(parseHeaderJson('{"accept":true}', "playground")).toEqual({
 			error: "invalid_headers",
 		});
 		expect(

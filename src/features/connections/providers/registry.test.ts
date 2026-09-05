@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { getProviderDefinition, providerRegistry } from "./registry";
 
-describe("predefined provider registry", () => {
+describe("provider registry custom headers", () => {
 	test("registers the requested provider modes", () => {
 		expect(
 			providerRegistry.filter((provider) =>
@@ -60,5 +60,30 @@ describe("predefined provider registry", () => {
 			kind: "api_key",
 			name: "X-N8N-API-KEY",
 		});
+	});
+
+	test("injects one optional encrypted custom_headers field into every provider", () => {
+		expect(providerRegistry.length).toBeGreaterThan(0);
+		for (const provider of providerRegistry) {
+			const fields = provider.fields.filter(
+				(field) => field.key === "custom_headers",
+			);
+			expect(fields).toHaveLength(1);
+			expect(fields[0]).toMatchObject({
+				type: "key_value",
+				required: false,
+				secret: true,
+			});
+		}
+	});
+
+	test("exposes Generic HTTP without a custom auth strategy", () => {
+		const genericHeaders = getProviderDefinition("generic_headers");
+		expect(genericHeaders).toBeDefined();
+		expect(genericHeaders?.metadata.nameKey).toBe(
+			"providers_generic_headers_name",
+		);
+		expect(genericHeaders?.auth?.kind).not.toBe("custom_headers");
+		expect(getProviderDefinition("generic_mcp_headers")).toBeUndefined();
 	});
 });

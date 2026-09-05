@@ -28,7 +28,7 @@ export const genericOauth2: ProviderDefinition = {
 	icon: { kind: "generic" },
 	defaultBaseUrl: "https://api.example.com",
 	protocol: "oauth2",
-	capabilities: { connect: true, test: true, refresh: true },
+	capabilities: { connect: true, test: true },
 	metadata: {
 		nameKey: "providers_generic_oauth2_name",
 		descriptionKey: "providers_generic_oauth2_description",
@@ -128,19 +128,7 @@ export const genericHeaders: ProviderDefinition = {
 		nameKey: "providers_generic_headers_name",
 		descriptionKey: "providers_generic_headers_description",
 	},
-	fields: [
-		baseUrlField,
-		{
-			key: "headers",
-			labelKey: "provider_field_headers",
-			descriptionKey: "provider_field_headers_description",
-			type: "key_value",
-			required: false,
-			secret: true,
-			defaultValue: [],
-		},
-		...testFields,
-	],
+	fields: [baseUrlField, ...testFields],
 };
 
 function mcpFields(
@@ -201,27 +189,6 @@ export const genericMcpBearer: ProviderDefinition = {
 	]),
 };
 
-export const genericMcpHeaders: ProviderDefinition = {
-	...genericMcp,
-	slug: "generic_mcp_headers",
-	auth: { kind: "custom_headers", field: "headers" },
-	metadata: {
-		nameKey: "providers_generic_mcp_headers_name",
-		descriptionKey: "providers_generic_mcp_headers_description",
-	},
-	fields: mcpFields([
-		{
-			key: "headers",
-			labelKey: "provider_field_headers",
-			descriptionKey: "provider_field_headers_description",
-			type: "key_value",
-			required: false,
-			secret: true,
-			defaultValue: [],
-		},
-	]),
-};
-
 export const genericMcpOauth: ProviderDefinition = {
 	...genericMcp,
 	slug: "generic_mcp_oauth",
@@ -231,15 +198,25 @@ export const genericMcpOauth: ProviderDefinition = {
 		nameKey: "providers_generic_mcp_oauth_name",
 		descriptionKey: "providers_generic_mcp_oauth_description",
 	},
-	capabilities: { connect: true, test: true, refresh: true },
+	capabilities: { connect: true, test: true },
 	fields: mcpFields([
 		stringField("client_id", "provider_field_client_id", {
-			required: false,
+			required: true,
 			secret: false,
 		}),
 		stringField("client_secret", "provider_field_client_secret", {
-			required: false,
+			required: true,
 			secret: true,
+		}),
+		stringField("authorization_url", "provider_field_authorization_url", {
+			required: true,
+			secret: false,
+			outboundUrl: "absolute",
+		}),
+		stringField("token_url", "provider_field_token_url", {
+			required: true,
+			secret: false,
+			outboundUrl: "absolute",
 		}),
 		stringField("scopes", "provider_field_scopes", {
 			required: false,
@@ -257,6 +234,5 @@ export const genericProviders: readonly ProviderDefinition[] = [
 	genericMcp,
 	genericMcpBasic,
 	genericMcpBearer,
-	genericMcpHeaders,
 	genericMcpOauth,
 ];

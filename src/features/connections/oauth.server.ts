@@ -15,7 +15,12 @@ import {
 	decryptSecret,
 	encryptSecret,
 } from "#/server/crypto.server";
+import { applyCustomHeaders } from "#/server/custom-headers.server";
 import { GatewayError } from "#/server/errors";
+import {
+	fetchConfiguredUpstream,
+	readJsonResponse,
+} from "#/server/outbound-request.server";
 import {
 	getAllowPrivateNetwork,
 	validateConfiguredUpstreamUrl,
@@ -117,7 +122,10 @@ async function resolveOAuthEndpoints(
 			),
 		};
 	}
-	if (templateSlug === "generic_oauth2") {
+	if (
+		templateSlug === "generic_oauth2" ||
+		templateSlug === "generic_mcp_oauth"
+	) {
 		const authorizationUrl = configString(config, "authorization_url");
 		const tokenUrl = configString(config, "token_url");
 		if (!authorizationUrl || !tokenUrl) {
@@ -157,14 +165,14 @@ async function resolveOAuthEndpoints(
 			".well-known/openid-configuration",
 			`${issuerUrl.toString().replace(/\/$/, "")}/`,
 		);
-		const safeDiscoveryUrl = await validateConfiguredUpstreamUrl(
-			discoveryUrl.toString(),
-		);
+		const discoveryHeaders = new Headers({ accept: "application/json" });
+		applyCustomHeaders(discoveryHeaders, secrets);
 		let response: Response;
 		try {
-			response = await fetch(safeDiscoveryUrl, {
-				headers: { accept: "application/json" },
+			response = await fetchConfiguredUpstream(discoveryUrl, {
+				headers: discoveryHeaders,
 				redirect: "error",
+				timeoutMs: 10_000,
 			});
 		} catch {
 			throw new GatewayError(
@@ -174,6 +182,7 @@ async function resolveOAuthEndpoints(
 			);
 		}
 		if (!response.ok) {
+			await response.body?.cancel().catch(() => undefined);
 			throw new GatewayError(
 				502,
 				"OIDC_DISCOVERY_FAILED",
@@ -181,13 +190,28 @@ async function resolveOAuthEndpoints(
 			);
 		}
 		const document = parseOidcDiscoveryDocument(
-			await response.json().catch(() => null),
+			await readJsonResponse(response).catch(() => null),
 		);
 		if (!document) {
 			throw new GatewayError(
 				502,
 				"OIDC_DISCOVERY_FAILED",
 				"The OIDC discovery document is invalid.",
+			);
+		}
+		const discoveredIssuer = await validateOAuthEndpoint(
+			document.issuer,
+			"OIDC issuer",
+			allowPrivateNetwork,
+		);
+		if (
+			new URL(discoveredIssuer).toString().replace(/\/$/, "") !==
+			issuerUrl.toString().replace(/\/$/, "")
+		) {
+			throw new GatewayError(
+				502,
+				"OIDC_DISCOVERY_FAILED",
+				"The OIDC discovery issuer did not match the configured issuer.",
 			);
 		}
 		return {
@@ -236,29 +260,38 @@ function asTokenResponse(payload: unknown): TokenResponse {
 async function requestToken(
 	tokenUrl: string,
 	body: URLSearchParams,
+	secrets: ReadonlyMap<string, string>,
 ): Promise<TokenResponse> {
 	// Validate immediately before every outbound token request so a runtime
 	// policy change takes effect without restarting the process.
-	const safeTokenUrl = await validateConfiguredUpstreamUrl(tokenUrl);
 	let response: Response;
 	try {
-		response = await fetch(safeTokenUrl, {
+		const headers = new Headers({
+			accept: "application/json",
+			"content-type": "application/x-www-form-urlencoded",
+		});
+		applyCustomHeaders(headers, secrets);
+		response = await fetchConfiguredUpstream(tokenUrl, {
 			method: "POST",
-			headers: {
-				accept: "application/json",
-				"content-type": "application/x-www-form-urlencoded",
-			},
+			headers,
 			body,
 			redirect: "error",
+			timeoutMs: 15_000,
 		});
-	} catch {
+	} catch (error) {
+		if (
+			error instanceof GatewayError &&
+			error.code === "INVALID_INJECTED_HEADER"
+		) {
+			throw error;
+		}
 		throw new GatewayError(
 			502,
 			"OAUTH_TOKEN_REQUEST_FAILED",
 			"The OAuth token endpoint could not be reached.",
 		);
 	}
-	const payload = await response.json().catch(() => null);
+	const payload = await readJsonResponse(response).catch(() => null);
 	if (!response.ok) {
 		throw new GatewayError(
 			502,
@@ -588,6 +621,7 @@ export async function finishOAuthConnection(callback: {
 			)
 		).tokenUrl,
 		body,
+		secrets,
 	);
 	await persistToken({ instanceId: instance.id, token, userId: record.userId });
 	recordAuditEvent({
@@ -650,7 +684,7 @@ export async function connectClientCredentials(
 	}
 	await persistToken({
 		instanceId,
-		token: await requestToken(tokenUrl, body),
+		token: await requestToken(tokenUrl, body, secrets),
 		userId,
 	});
 }
@@ -701,6 +735,7 @@ export async function refreshOAuthConnection(
 				)
 			).tokenUrl,
 			body,
+			secrets,
 		);
 		const persisted = await persistToken({
 			instanceId,

@@ -7,19 +7,21 @@ import {
 	asStringArray,
 	findActiveApiKey,
 	getOrCreatePlaygroundApiKey,
-	hasApiKeyPermission,
 	markApiKeyUsed,
 } from "#/features/api-keys/api-keys.server";
 import { getProviderDefinition } from "#/features/connections/providers/registry";
 import { readConnectionSecrets } from "#/features/connections/secrets.server";
-
+import { applyCustomHeaders } from "./custom-headers.server";
 import { GatewayError } from "./errors";
 import { evaluateExpression } from "./expression.server";
+import { fetchConfiguredUpstream } from "./outbound-request.server";
 import { getRequestRuntime } from "./request-runtime.server";
 import {
 	appendUpstreamPath,
 	validateConfiguredUpstreamUrl,
 } from "./upstream-url.server";
+
+export { applyCustomHeaders } from "./custom-headers.server";
 
 const maximumProxyBodyBytes = 100 * 1024 * 1024;
 const providerSlugPattern = /^[a-z0-9][a-z0-9_-]{0,62}$/;
@@ -124,59 +126,6 @@ function randomIndex(length: number): number {
 
 function basicAuthorization(username: string, password: string): string {
 	return `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`;
-}
-
-function asHeaderEntries(
-	value: string | undefined,
-): readonly { key: string; value: string }[] {
-	if (!value) {
-		return [];
-	}
-	try {
-		const parsed: unknown = JSON.parse(value);
-		if (Array.isArray(parsed)) {
-			return parsed.flatMap((entry) => {
-				if (
-					entry &&
-					typeof entry === "object" &&
-					"key" in entry &&
-					"value" in entry &&
-					typeof entry.key === "string" &&
-					typeof entry.value === "string"
-				) {
-					return [{ key: entry.key, value: entry.value }];
-				}
-				return [];
-			});
-		}
-	} catch {
-		// Fall through to the human-friendly key: value format below.
-	}
-	return value
-		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter(Boolean)
-		.flatMap((line) => {
-			const separator = line.indexOf(":");
-			if (separator < 1) return [];
-			return [
-				{
-					key: line.slice(0, separator).trim(),
-					value: line.slice(separator + 1).trim(),
-				},
-			];
-		});
-}
-
-function isSafeInjectedHeader(name: string, value: string): boolean {
-	const normalized = name.toLowerCase();
-	return (
-		/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) &&
-		!/[\r\n]/.test(value) &&
-		!blockedRequestHeaders.has(normalized) &&
-		!normalized.startsWith("x-forwarded-") &&
-		value.length <= 8_192
-	);
 }
 
 function limitedRequestBody(
@@ -353,19 +302,6 @@ export function injectConnectionCredentials(
 				headers.set(name, auth.prefix ? `${auth.prefix} ${value}` : value);
 			return;
 		}
-		if (auth.kind === "custom_headers") {
-			for (const header of asHeaderEntries(secrets.get(auth.field))) {
-				const value = evaluateExpression(header.value);
-				if (!isSafeInjectedHeader(header.key, value))
-					throw new GatewayError(
-						400,
-						"INVALID_INJECTED_HEADER",
-						"The connection has an unsafe injected header.",
-					);
-				headers.set(header.key, value);
-			}
-			return;
-		}
 	}
 	if (templateSlug === "generic_basic") {
 		headers.set(
@@ -381,27 +317,12 @@ export function injectConnectionCredentials(
 		headers.set("authorization", `Bearer ${requiredSecret(secrets, "token")}`);
 		return;
 	}
-	if (templateSlug === "generic_headers") {
-		for (const header of asHeaderEntries(secrets.get("headers"))) {
-			const value = evaluateExpression(header.value);
-			if (!isSafeInjectedHeader(header.key, value)) {
-				throw new GatewayError(
-					400,
-					"INVALID_INJECTED_HEADER",
-					"The connection has an unsafe injected header.",
-				);
-			}
-			headers.set(header.key, value);
-		}
-		return;
-	}
 	if (
 		templateSlug === "github_oauth" &&
 		/^applications\/[^/]+(?:\/|$)/.test(path)
 	) {
-		const legacyClientId = secrets.get("client_id");
 		const publicClientId =
-			typeof config?.client_id === "string" ? config.client_id : legacyClientId;
+			typeof config?.client_id === "string" ? config.client_id : undefined;
 		if (!publicClientId) {
 			throw new GatewayError(
 				503,
@@ -600,6 +521,7 @@ async function proxyWithInstance(
 		instance.templateSlug,
 		secrets,
 	);
+	applyCustomHeaders(outboundHeaders, secrets);
 	const canHaveBody = request.method !== "GET" && request.method !== "HEAD";
 	let body = canHaveBody ? limitedRequestBody(request) : undefined;
 	body = await applyJsonApiKeyBody(body, instance.templateSlug, secrets);
@@ -615,12 +537,12 @@ async function proxyWithInstance(
 	}
 	let upstream: Response;
 	try {
-		upstream = await fetch(target, {
+		upstream = await fetchConfiguredUpstream(target, {
 			body,
-			credentials: "omit",
 			headers: outboundHeaders,
 			method: request.method,
 			redirect: "manual",
+			timeoutMs: 15_000,
 		});
 	} catch {
 		getRequestRuntime().deferred.defer(() =>
@@ -692,14 +614,6 @@ export async function proxyRequest(
 			"The proxy API key is invalid, expired, or revoked.",
 		);
 	}
-	if (!hasApiKeyPermission(key, "proxy")) {
-		throw new GatewayError(
-			403,
-			"API_KEY_PERMISSION_DENIED",
-			"This API key does not have proxy permission.",
-		);
-	}
-
 	const instanceIds = asStringArray(key.instanceIds);
 	const providerSlugs = asStringArray(key.providerSlugs);
 	const providerScopeMode =
@@ -753,13 +667,6 @@ export async function proxyPlaygroundRequest(
 ): Promise<Response> {
 	assertProxyPath(path);
 	const key = await getOrCreatePlaygroundApiKey(userId);
-	if (!hasApiKeyPermission(key, "proxy")) {
-		throw new GatewayError(
-			403,
-			"API_KEY_PERMISSION_DENIED",
-			"This API key does not have proxy permission.",
-		);
-	}
 	const [instance] = await getDb()
 		.select()
 		.from(providerInstances)

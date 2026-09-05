@@ -1,5 +1,5 @@
 {
-  "id": "8e2487fa-fa4b-467d-a1aa-3392280cf1e5",
+  "id": "e09efc46-a731-4c7c-9141-58a625f92d50",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -16,7 +16,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -37,6 +37,21 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "key_kind": {
+          "name": "key_kind",
+          "type": "api_key_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "provider_scope_mode": {
+          "name": "provider_scope_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'all'"
         },
         "provider_slugs": {
           "name": "provider_slugs",
@@ -101,6 +116,22 @@
           "method": "btree",
           "with": {}
         },
+        "api_key_user_playground_idx": {
+          "name": "api_key_user_playground_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"api_key\".\"key_kind\" = 'playground'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "api_key_user_id_idx": {
           "name": "api_key_user_id_idx",
           "columns": [
@@ -151,19 +182,7 @@
         },
         "owner_user_id": {
           "name": "owner_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "setup_claim": {
-          "name": "setup_claim",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "setup_claim_expires_at": {
-          "name": "setup_claim_expires_at",
-          "type": "timestamp with time zone",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -173,8 +192,21 @@
           "primaryKey": false,
           "notNull": false
         },
+        "allow_private_network": {
+          "name": "allow_private_network",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "metrics_cleanup_due_at": {
           "name": "metrics_cleanup_due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduler_lease_until": {
+          "name": "scheduler_lease_until",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -228,7 +260,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -249,6 +281,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'success'"
         },
         "metadata": {
           "name": "metadata",
@@ -271,6 +310,33 @@
           "columns": [
             {
               "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_event_user_result_occurred_idx": {
+          "name": "audit_event_user_result_occurred_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "result",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -315,7 +381,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
           "notNull": true
         },
@@ -339,7 +405,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -463,7 +529,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
           "notNull": true
         },
@@ -516,7 +582,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
           "notNull": true
         },
@@ -558,7 +624,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         }
@@ -615,7 +681,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
           "notNull": true
         },
@@ -679,7 +745,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
           "notNull": true
         },
@@ -762,7 +828,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -835,6 +901,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "oauth_state_expiry_idx": {
+          "name": "oauth_state_expiry_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -883,7 +964,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -947,13 +1028,6 @@
           "notNull": true,
           "default": true
         },
-        "allow_private_network": {
-          "name": "allow_private_network",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "health_interval_minutes": {
           "name": "health_interval_minutes",
           "type": "integer",
@@ -997,13 +1071,6 @@
           "notNull": true,
           "default": 0
         },
-        "schedule_revision": {
-          "name": "schedule_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1020,9 +1087,15 @@
         }
       },
       "indexes": {
-        "provider_instance_instance_slug_idx": {
-          "name": "provider_instance_instance_slug_idx",
+        "provider_instance_user_instance_slug_idx": {
+          "name": "provider_instance_user_instance_slug_idx",
           "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "instance_slug",
               "isExpression": false,
@@ -1056,11 +1129,35 @@
           "method": "btree",
           "with": {}
         },
-        "provider_instance_refresh_due_idx": {
-          "name": "provider_instance_refresh_due_idx",
+        "provider_instance_active_pool_idx": {
+          "name": "provider_instance_active_pool_idx",
           "columns": [
             {
-              "expression": "refresh_due_at",
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "enabled",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "health",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1071,11 +1168,56 @@
           "method": "btree",
           "with": {}
         },
-        "provider_instance_health_due_idx": {
-          "name": "provider_instance_health_due_idx",
+        "provider_instance_refresh_claim_idx": {
+          "name": "provider_instance_refresh_claim_idx",
           "columns": [
             {
+              "expression": "enabled",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "refresh_due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "refresh_lease_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "provider_instance_health_claim_idx": {
+          "name": "provider_instance_health_claim_idx",
+          "columns": [
+            {
+              "expression": "enabled",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
               "expression": "health_due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "health_lease_until",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1120,7 +1262,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -1247,7 +1389,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -1257,11 +1399,31 @@
           "primaryKey": false,
           "notNull": false
         },
+        "api_key_id": {
+          "name": "api_key_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "provider_slug": {
           "name": "provider_slug",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'GET'"
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'/'"
         },
         "status_code": {
           "name": "status_code",
@@ -1310,6 +1472,102 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "request_metric_user_provider_occurred_idx": {
+          "name": "request_metric_user_provider_occurred_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "request_metric_user_status_occurred_idx": {
+          "name": "request_metric_user_status_occurred_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "request_metric_user_instance_occurred_idx": {
+          "name": "request_metric_user_instance_occurred_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "instance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "request_metric_occurred_idx": {
+          "name": "request_metric_occurred_idx",
+          "columns": [
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1338,6 +1596,19 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "request_metric_api_key_id_api_key_id_fk": {
+          "name": "request_metric_api_key_id_api_key_id_fk",
+          "tableFrom": "request_metric",
+          "tableTo": "api_key",
+          "columnsFrom": [
+            "api_key_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1352,7 +1623,7 @@
       "columns": {
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": true,
           "notNull": true
         },
@@ -1385,23 +1656,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "user_settings_user_id_idx": {
-          "name": "user_settings_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "user_settings_user_id_user_id_fk": {
           "name": "user_settings_user_id_user_id_fk",
@@ -1425,6 +1680,14 @@
     }
   },
   "enums": {
+    "public.api_key_kind": {
+      "name": "api_key_kind",
+      "schema": "public",
+      "values": [
+        "user",
+        "playground"
+      ]
+    },
     "public.connection_status": {
       "name": "connection_status",
       "schema": "public",

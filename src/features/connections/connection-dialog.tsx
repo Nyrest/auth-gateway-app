@@ -19,7 +19,10 @@ import {
 	useRef,
 	useState,
 } from "react";
-
+import {
+	HeaderEditor,
+	type HeaderEntry,
+} from "#/components/headers/header-editor";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import {
@@ -41,6 +44,7 @@ import {
 } from "#/components/ui/select";
 import { Textarea } from "#/components/ui/textarea";
 import { connectionDetailsQueryOptions, queryKeys } from "#/lib/api";
+import { parseStoredHeaders, serializeStoredHeaders } from "#/lib/headers";
 import { m } from "#/paraglide/messages.js";
 import { getLocale } from "#/paraglide/runtime.js";
 import {
@@ -98,6 +102,30 @@ function displayDefault(value: unknown): string {
 	return JSON.stringify(value);
 }
 
+function providerHeaderConflictNames(template: Template): readonly string[] {
+	const names = new Set(Object.keys(template.fixedHeaders ?? {}));
+	// These business headers are intentionally overridable, but deserve an
+	// explicit non-blocking warning because they commonly carry credentials or
+	// session state.
+	names.add("authorization");
+	names.add("cookie");
+	const auth = template.auth;
+	if (
+		(auth === undefined &&
+			["basic", "bearer", "oauth2", "oidc"].includes(template.protocol)) ||
+		auth?.kind === "basic" ||
+		auth?.kind === "bearer" ||
+		auth?.kind === "oauth_bearer" ||
+		template.fields.some((field) => field.key === "access_token")
+	) {
+		names.add("authorization");
+	}
+	if (auth?.kind === "api_key" && auth.location === "header") {
+		names.add(auth.name ?? "x-api-key");
+	}
+	return [...names];
+}
+
 function configInputValue(value: unknown): string {
 	if (value === undefined || value === null) return "";
 	if (typeof value === "string") return value;
@@ -131,49 +159,6 @@ function parseConfigValue(
 			throw new ConnectionValidationError(
 				m.invalid_json({ field: fieldLabel(field) }),
 			);
-		}
-	}
-	if (field.type === "key_value") {
-		return value
-			.split(/\r?\n/)
-			.map((line) => line.trim())
-			.filter(Boolean)
-			.map((line) => {
-				const separator = line.indexOf(":");
-				if (separator < 1)
-					throw new ConnectionValidationError(
-						m.invalid_key_value({ field: fieldLabel(field) }),
-					);
-				return {
-					key: line.slice(0, separator).trim(),
-					value: line.slice(separator + 1).trim(),
-				};
-			});
-	}
-	return value;
-}
-
-function formatConfigValue(
-	field: Template["fields"][number],
-	value: string,
-): string {
-	if (field.type === "key_value" && value) {
-		try {
-			const parsed = JSON.parse(value) as unknown;
-			if (Array.isArray(parsed))
-				return parsed
-					.filter((item): item is { key: string; value: string } =>
-						Boolean(
-							item &&
-								typeof item === "object" &&
-								"key" in item &&
-								"value" in item,
-						),
-					)
-					.map((item) => `${item.key}: ${item.value}`)
-					.join("\n");
-		} catch {
-			/* Keep a legacy plain-text value visible. */
 		}
 	}
 	return value;
@@ -548,10 +533,7 @@ export function ConnectionConfigDialog({
 		for (const field of template.fields)
 			if (field.key !== "base_url")
 				values[field.key] = connection
-					? formatConfigValue(
-							field,
-							configInputValue(connection.config[field.key]),
-						)
+					? configInputValue(connection.config[field.key])
 					: displayDefault(field.defaultValue);
 		setConfig(values);
 		setClearSecrets([]);
@@ -569,6 +551,10 @@ export function ConnectionConfigDialog({
 	const setField = (key: string, value: string) =>
 		setConfig((current) => ({ ...current, [key]: value }));
 	async function submit() {
+		if (fieldErrors.custom_headers) {
+			setError(fieldErrors.custom_headers);
+			return;
+		}
 		setPending(true);
 		setError(undefined);
 		setFieldErrors({});
@@ -637,7 +623,7 @@ export function ConnectionConfigDialog({
 	}
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-h-[90svh] max-w-6xl overflow-y-auto">
+			<DialogContent className="flex max-h-[90svh] max-w-6xl flex-col overflow-hidden">
 				<DialogHeader>
 					<div className="flex items-start gap-3">
 						<span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-primary">
@@ -714,101 +700,141 @@ export function ConnectionConfigDialog({
 					</div>
 				) : null}
 				<form
-					className="grid gap-5"
+					className="flex min-h-0 flex-1 flex-col gap-5"
 					onSubmit={(event) => {
 						event.preventDefault();
 						void submit();
 					}}
 				>
-					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-						<TextField
-							label={m.connection_name()}
-							name="connection-name"
-							onChange={(value) =>
-								setForm((current) => ({ ...current, name: value }))
-							}
-							placeholder={m.connection_name_placeholder()}
-							required
-							value={form.name}
-						/>
-						<TextField
-							label={m.provider_pool_slug()}
-							name="provider-slug"
-							onChange={(value) =>
-								setForm((current) => ({ ...current, providerSlug: value }))
-							}
-							placeholder={m.provider_pool_placeholder()}
-							required
-							value={form.providerSlug}
-						/>
-						<div className="grid gap-2 sm:col-span-2">
-							<Label htmlFor="base-url">{m.target_url()}</Label>
-							<Input
-								id="base-url"
-								onChange={(event) =>
-									setForm((current) => ({
-										...current,
-										baseUrl: event.target.value,
-									}))
-								}
-								placeholder={template.defaultBaseUrl}
-								required
-								type="url"
-								value={form.baseUrl}
-							/>
+					<div className="min-h-0 flex-1 overflow-y-auto pr-2">
+						<div className="grid gap-5">
+							<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+								<TextField
+									label={m.connection_name()}
+									name="connection-name"
+									onChange={(value) =>
+										setForm((current) => ({ ...current, name: value }))
+									}
+									placeholder={m.connection_name_placeholder()}
+									required
+									value={form.name}
+								/>
+								<TextField
+									label={m.provider_pool_slug()}
+									name="provider-slug"
+									onChange={(value) =>
+										setForm((current) => ({ ...current, providerSlug: value }))
+									}
+									placeholder={m.provider_pool_placeholder()}
+									required
+									value={form.providerSlug}
+								/>
+								<div className="grid gap-2 sm:col-span-2">
+									<Label htmlFor="base-url">{m.target_url()}</Label>
+									<Input
+										id="base-url"
+										onChange={(event) =>
+											setForm((current) => ({
+												...current,
+												baseUrl: event.target.value,
+											}))
+										}
+										placeholder={template.defaultBaseUrl}
+										required
+										type="url"
+										value={form.baseUrl}
+									/>
+								</div>
+							</div>
+							<div className="grid gap-2 sm:max-w-xs">
+								<Label htmlFor="health-interval">
+									{m.health_check_interval()}
+								</Label>
+								<Input
+									id="health-interval"
+									min={5}
+									max={1440}
+									onChange={(event) => setHealthInterval(event.target.value)}
+									placeholder={m.health_check_interval_placeholder()}
+									type="number"
+									value={healthInterval}
+								/>
+								<p className="text-xs text-muted-foreground">
+									{m.health_check_interval_description()}
+								</p>
+							</div>
+							<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+								{template.fields
+									.filter(
+										(field) =>
+											field.key !== "base_url" &&
+											(!field.visibleWhen ||
+												config[field.visibleWhen.field] ===
+													field.visibleWhen.equals),
+									)
+									.map((field) => {
+										const fieldEditor = (
+											<ProviderField
+												field={field}
+												key={field.key}
+												onClear={() => {
+													setClearSecrets((current) =>
+														current.includes(field.key)
+															? current.filter((item) => item !== field.key)
+															: [...current, field.key],
+													);
+													if (field.key === "custom_headers")
+														setFieldErrors((current) => {
+															if (!current.custom_headers) return current;
+															const next = { ...current };
+															delete next.custom_headers;
+															return next;
+														});
+												}}
+												onChange={(value) => setField(field.key, value)}
+												secretStored={
+													secretKeys.has(field.key) &&
+													!clearSecrets.includes(field.key)
+												}
+												value={config[field.key] ?? ""}
+												error={fieldErrors[field.key]}
+												conflicts={providerHeaderConflictNames(activeTemplate)}
+												onValidationChange={(valid) =>
+													setFieldErrors((current) => {
+														if (field.key !== "custom_headers") return current;
+														const next = { ...current };
+														if (valid) delete next[field.key];
+														else next[field.key] = m.invalid_headers();
+														return next;
+													})
+												}
+											/>
+										);
+										if (field.key !== "custom_headers") return fieldEditor;
+										return (
+											<details
+												className="rounded-lg border bg-muted/20 p-3 sm:col-span-2 xl:col-span-3"
+												key={field.key}
+											>
+												<summary className="cursor-pointer text-sm font-medium">
+													{m.custom_headers()}
+												</summary>
+												<p className="mt-2 text-xs text-muted-foreground">
+													{m.custom_headers_description()}
+												</p>
+												<div className="mt-3">{fieldEditor}</div>
+											</details>
+										);
+									})}
+							</div>
+							{error ? (
+								<p className="text-sm text-destructive" role="alert">
+									{error}
+								</p>
+							) : null}
 						</div>
 					</div>
-					<div className="grid gap-2 sm:max-w-xs">
-						<Label htmlFor="health-interval">{m.health_check_interval()}</Label>
-						<Input
-							id="health-interval"
-							min={5}
-							max={1440}
-							onChange={(event) => setHealthInterval(event.target.value)}
-							placeholder={m.health_check_interval_placeholder()}
-							type="number"
-							value={healthInterval}
-						/>
-						<p className="text-xs text-muted-foreground">
-							{m.health_check_interval_description()}
-						</p>
-					</div>
-					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-						{template.fields
-							.filter(
-								(field) =>
-									field.key !== "base_url" &&
-									(!field.visibleWhen ||
-										config[field.visibleWhen.field] ===
-											field.visibleWhen.equals),
-							)
-							.map((field) => (
-								<ProviderField
-									field={field}
-									key={field.key}
-									onClear={() =>
-										setClearSecrets((current) =>
-											current.includes(field.key)
-												? current.filter((item) => item !== field.key)
-												: [...current, field.key],
-										)
-									}
-									onChange={(value) => setField(field.key, value)}
-									secretStored={
-										secretKeys.has(field.key) &&
-										!clearSecrets.includes(field.key)
-									}
-									value={config[field.key] ?? ""}
-									error={fieldErrors[field.key]}
-								/>
-							))}
-					</div>
-					{error ? (
-						<p className="text-sm text-destructive" role="alert">
-							{error}
-						</p>
-					) : null}
-					<DialogFooter>
+					<DialogFooter className="shrink-0 border-t pt-4">
 						{editing && onDelete ? (
 							<Button onClick={onDelete} type="button" variant="destructive">
 								<Trash2 /> {m.delete()}
@@ -839,6 +865,8 @@ function ProviderField({
 	onChange,
 	onClear,
 	error,
+	conflicts,
+	onValidationChange,
 }: {
 	readonly field: Template["fields"][number];
 	readonly value: string;
@@ -846,9 +874,24 @@ function ProviderField({
 	readonly onChange: (value: string) => void;
 	readonly onClear: () => void;
 	readonly error?: string;
+	readonly conflicts?: readonly string[];
+	readonly onValidationChange?: (valid: boolean) => void;
 }) {
 	const id = `provider-${field.key}`;
 	const full = ["json", "key_value", "multi_select"].includes(field.type);
+	if (field.key === "custom_headers") {
+		return (
+			<CustomHeadersField
+				conflicts={conflicts}
+				error={error}
+				onChange={onChange}
+				onClear={onClear}
+				onValidationChange={onValidationChange}
+				secretStored={secretStored}
+				value={value}
+			/>
+		);
+	}
 	if (field.type === "boolean")
 		return (
 			<div className={`flex items-start gap-3 ${full ? "sm:col-span-2" : ""}`}>
@@ -999,6 +1042,55 @@ function ProviderField({
 			{field.secret && secretStored ? (
 				<SecretActions onClear={onClear} />
 			) : null}
+		</div>
+	);
+}
+
+function CustomHeadersField({
+	value,
+	secretStored,
+	onChange,
+	onClear,
+	error,
+	conflicts,
+	onValidationChange,
+}: {
+	readonly value: string;
+	readonly secretStored: boolean;
+	readonly onChange: (value: string) => void;
+	readonly onClear: () => void;
+	readonly error?: string;
+	readonly conflicts?: readonly string[];
+	readonly onValidationChange?: (valid: boolean) => void;
+}) {
+	const parsed = parseStoredHeaders(value, "provider");
+	const persistedEntries = "value" in parsed ? parsed.value : [];
+	const [entries, setEntries] = useState<HeaderEntry[]>(persistedEntries);
+	const draftSerialized = serializeStoredHeaders(entries);
+
+	useEffect(() => {
+		const next = parseStoredHeaders(value, "provider");
+		const nextEntries = "value" in next ? next.value : [];
+		// Keep editor-only blank rows when the parent receives the serialized
+		// canonical value. They remain visible until the user fills them.
+		if (serializeStoredHeaders(nextEntries) !== draftSerialized)
+			setEntries(nextEntries);
+	}, [draftSerialized, value]);
+
+	return (
+		<div className="grid gap-2 sm:col-span-2 xl:col-span-3">
+			<HeaderEditor
+				value={entries}
+				onChange={(next) => {
+					setEntries(next);
+					onChange(serializeStoredHeaders(next));
+				}}
+				policy="provider"
+				conflicts={conflicts}
+				onValidationChange={onValidationChange}
+				error={error}
+			/>
+			{secretStored ? <SecretActions onClear={onClear} /> : null}
 		</div>
 	);
 }
