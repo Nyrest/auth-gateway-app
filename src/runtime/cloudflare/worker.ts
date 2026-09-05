@@ -8,7 +8,8 @@ import { handleApplicationRequest } from "#/server-runtime.server";
 
 type Bindings = {
 	readonly AUTH_GATEWAY_SECRET: string;
-	readonly HYPERDRIVE: { readonly connectionString: string };
+	readonly DATABASE_URL?: string;
+	readonly HYPERDRIVE?: { readonly connectionString: string };
 };
 
 type ExecutionContext = {
@@ -16,8 +17,16 @@ type ExecutionContext = {
 };
 
 function createServices(bindings: Bindings): RuntimeServices {
+	const connectionString =
+		bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
+	if (!connectionString) {
+		throw new Error(
+			"Configure either a HYPERDRIVE binding or a DATABASE_URL secret.",
+		);
+	}
+
 	return {
-		database: createDatabase(bindings.HYPERDRIVE.connectionString, 2),
+		database: createDatabase(connectionString, 2),
 		kind: "cloudflare",
 		resolveHostname: resolveHostnameOverHttps,
 		rootSecret: decodeRootSecret(bindings.AUTH_GATEWAY_SECRET),

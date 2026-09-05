@@ -18,16 +18,18 @@ Choose one deployment method below.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Nyrest/auth-gateway-app)
 
-The button opens Cloudflare's deployment flow for this repository. A PostgreSQL database and a Cloudflare Hyperdrive configuration are required.
+The button opens Cloudflare's deployment flow for this repository. A PostgreSQL database is required; choose Hyperdrive or a direct PostgreSQL connection below.
 
-1. Create a PostgreSQL database that Cloudflare Hyperdrive can reach.
-2. Create a Hyperdrive configuration and note its ID:
+1. Create a PostgreSQL database that your Worker can reach.
+2. Choose a database connection mode:
+
+   **Hyperdrive (recommended)** — creates a pooled connection close to your database. Create a configuration and note its ID:
 
    ```sh
    bunx wrangler hyperdrive create auth-gateway-db --connection-string="postgresql://USER:PASSWORD@HOST:5432/DATABASE"
    ```
 
-3. Add the binding to `wrangler.jsonc`:
+   Add the binding to `wrangler.jsonc`:
 
    ```jsonc
    "hyperdrive": [{
@@ -36,13 +38,19 @@ The button opens Cloudflare's deployment flow for this repository. A PostgreSQL 
    }]
    ```
 
-4. Add the required secret. Generate one locally with `bun src/scripts/generate-secret.ts`, then copy the single-line result when prompted:
+   **Direct PostgreSQL** — store the connection string as a Worker secret. This mode does not need a Hyperdrive binding:
+
+   ```sh
+   bunx wrangler secret put DATABASE_URL
+   ```
+
+3. Add the required secret. Generate one locally with `bun src/scripts/generate-secret.ts`, then copy the single-line result when prompted:
 
    ```sh
    bunx wrangler secret put AUTH_GATEWAY_SECRET
    ```
 
-5. Set `DATABASE_URL` to the direct PostgreSQL connection string on a trusted machine (not the Hyperdrive URL), apply the schema, and deploy:
+4. Set `DATABASE_URL` to the direct PostgreSQL connection string on a trusted machine, apply the schema, and deploy:
 
    ```sh
    bun run db:migrate
@@ -81,10 +89,10 @@ The Compose database is private to the stack and persists in a named volume.
 | Variable | Required | Used by | Description |
 | --- | --- | --- | --- |
 | `AUTH_GATEWAY_SECRET` | Yes | Worker and Docker | A stable secret containing exactly 32 random bytes, encoded as unpadded base64url (normally 43 characters). Generate it with `bun src/scripts/generate-secret.ts`. Keep it private and do not change it after storing connections or sessions. |
-| `DATABASE_URL` | Migrations and local tooling | Docker runtime or migration commands | PostgreSQL connection string. Docker Compose supplies its internal value automatically; Cloudflare uses the `HYPERDRIVE` binding at runtime. |
+| `DATABASE_URL` | No for Hyperdrive or Docker Compose; yes for direct Cloudflare or standalone container | Cloudflare direct mode, Docker runtime, or migration commands | PostgreSQL connection string. Docker Compose supplies its internal value automatically. Cloudflare uses this secret for direct mode and ignores it when `HYPERDRIVE` is configured. |
 | `PORT` | No | Docker | Application port; defaults to `3000`. If you change it, update the Docker port mapping as well. |
 
-`HYPERDRIVE` is a Wrangler binding, not a `.env` variable. Configure it in `wrangler.jsonc` as shown above.
+`HYPERDRIVE` is an optional Wrangler binding, not a `.env` variable. Configure it in `wrangler.jsonc` for the recommended pooled mode, or set `DATABASE_URL` as a Worker secret for direct mode.
 
 ## First use
 
