@@ -1,5 +1,5 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Client, Pool } from "pg";
 
 import { getRequestRuntime } from "#/server/request-runtime.server";
 
@@ -29,11 +29,24 @@ export function createDatabase(
 		return existing;
 	}
 
-	const pool = new Pool({ connectionString, max: maximumConnections });
+	const pool = new Pool({
+		connectionString,
+		max: maximumConnections,
+		ssl: { rejectUnauthorized: false },
+	});
 	const db = drizzle({ client: pool, schema: gatewaySchema });
 	databases.set(connectionString, db);
 	pools.set(connectionString, pool);
 	return db;
+}
+
+export async function createHyperdriveDatabase(
+	connectionString: string,
+): Promise<GatewayDatabase> {
+	const client = new Client({ connectionString });
+	await client.connect();
+
+	return drizzle({ client, schema: gatewaySchema });
 }
 
 export function getDb(): GatewayDatabase {

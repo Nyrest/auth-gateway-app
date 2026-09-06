@@ -1,5 +1,5 @@
 import application from "@tanstack/react-start/server-entry";
-import { createDatabase } from "#/db/index.server";
+import { createDatabase, createHyperdriveDatabase } from "#/db/index.server";
 import type { RuntimeServices } from "#/runtime/contract.server";
 import { decodeRootSecret } from "#/runtime/secret.server";
 import { resolveHostnameOverHttps } from "#/server/hostname-resolution.server";
@@ -16,7 +16,7 @@ type ExecutionContext = {
 	waitUntil(promise: Promise<unknown>): void;
 };
 
-function createServices(bindings: Bindings): RuntimeServices {
+async function createServices(bindings: Bindings): Promise<RuntimeServices> {
 	const connectionString =
 		bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
 	if (!connectionString) {
@@ -26,7 +26,9 @@ function createServices(bindings: Bindings): RuntimeServices {
 	}
 
 	return {
-		database: createDatabase(connectionString, 2),
+		database: bindings.HYPERDRIVE
+			? await createHyperdriveDatabase(connectionString)
+			: createDatabase(connectionString, 2),
 		kind: "cloudflare",
 		resolveHostname: resolveHostnameOverHttps,
 		rootSecret: decodeRootSecret(bindings.AUTH_GATEWAY_SECRET),
@@ -39,23 +41,22 @@ export default {
 		bindings: Bindings,
 		context: ExecutionContext,
 	): Promise<Response> {
-		return handleApplicationRequest(
-			application,
-			request,
-			createServices(bindings),
-			{
-				clientIp: request.headers.get("cf-connecting-ip"),
-				deferPromise: (promise) => context.waitUntil(promise),
-			},
-		);
+		const services = await createServices(bindings);
+
+		return handleApplicationRequest(application, request, services, {
+			clientIp: request.headers.get("cf-connecting-ip"),
+			deferPromise: (promise) => context.waitUntil(promise),
+		});
 	},
-	scheduled(
+	async scheduled(
 		_controller: unknown,
 		bindings: Bindings,
 		context: ExecutionContext,
-	): void {
+	): Promise<void> {
+		const services = await createServices(bindings);
+
 		context.waitUntil(
-			runScheduledMaintenance(createServices(bindings), new Date(), (promise) =>
+			runScheduledMaintenance(services, new Date(), (promise) =>
 				context.waitUntil(promise),
 			),
 		);

@@ -9,7 +9,11 @@ if (!connectionString) {
 	throw new Error("DATABASE_URL is required for migrations");
 }
 
-const pool = new Pool({ connectionString, max: 1 });
+const pool = new Pool({
+	connectionString,
+	max: 1,
+	ssl: { rejectUnauthorized: false },
+});
 try {
 	await migrate(drizzle({ client: pool, schema: gatewaySchema }), {
 		migrationsFolder: "drizzle",
