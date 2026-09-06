@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "auth-gateway",
+  "name": "auth-gateway-app",
   "compatibility_date": "2026-08-30",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/runtime/cloudflare/worker.ts",
