@@ -547,7 +547,6 @@ export function ConnectionConfigDialog({
 	}, [connection, open, template]);
 	if (!template) return null;
 	const activeTemplate = template;
-	const secretKeys = new Set(connection?.secretKeys ?? []);
 	const setField = (key: string, value: string) =>
 		setConfig((current) => ({ ...current, [key]: value }));
 	async function submit() {
@@ -648,14 +647,14 @@ export function ConnectionConfigDialog({
 				{editing && connection ? (
 					<div className="grid gap-3 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
 						<Stat
+							label={m.status()}
+							value={connection.enabled ? m.enabled() : m.disabled()}
+						/>
+						<Stat
 							label={m.lifecycle()}
 							value={statusLabel(connection.status)}
 						/>
 						<Stat label={m.health()} value={statusLabel(connection.health)} />
-						<Stat
-							label={m.encrypted_fields()}
-							value={String(connection.secretKeys.length)}
-						/>
 						<Stat
 							label={m.last_updated()}
 							value={formatDateTime(connection.updatedAt)}
@@ -775,6 +774,8 @@ export function ConnectionConfigDialog({
 									.map((field) => {
 										const fieldEditor = (
 											<ProviderField
+												clearRequested={clearSecrets.includes(field.key)}
+												editing={editing}
 												field={field}
 												key={field.key}
 												onClear={() => {
@@ -792,10 +793,6 @@ export function ConnectionConfigDialog({
 														});
 												}}
 												onChange={(value) => setField(field.key, value)}
-												secretStored={
-													secretKeys.has(field.key) &&
-													!clearSecrets.includes(field.key)
-												}
 												value={config[field.key] ?? ""}
 												error={fieldErrors[field.key]}
 												conflicts={providerHeaderConflictNames(activeTemplate)}
@@ -861,7 +858,8 @@ export function ConnectionConfigDialog({
 function ProviderField({
 	field,
 	value,
-	secretStored,
+	editing,
+	clearRequested,
 	onChange,
 	onClear,
 	error,
@@ -870,7 +868,8 @@ function ProviderField({
 }: {
 	readonly field: Template["fields"][number];
 	readonly value: string;
-	readonly secretStored: boolean;
+	readonly editing: boolean;
+	readonly clearRequested: boolean;
 	readonly onChange: (value: string) => void;
 	readonly onClear: () => void;
 	readonly error?: string;
@@ -879,15 +878,17 @@ function ProviderField({
 }) {
 	const id = `provider-${field.key}`;
 	const full = ["json", "key_value", "multi_select"].includes(field.type);
+	const secretValueCanBeKept = field.secret && editing && !clearRequested;
 	if (field.key === "custom_headers") {
 		return (
 			<CustomHeadersField
+				clearRequested={clearRequested}
 				conflicts={conflicts}
+				editing={editing}
 				error={error}
 				onChange={onChange}
 				onClear={onClear}
 				onValidationChange={onValidationChange}
-				secretStored={secretStored}
 				value={value}
 			/>
 		);
@@ -989,7 +990,7 @@ function ProviderField({
 			<div className="grid gap-2 sm:col-span-2">
 				<Label htmlFor={id}>
 					{fieldLabel(field)}
-					{field.required ? " *" : ""}
+					{field.required && !secretValueCanBeKept ? " *" : ""}
 				</Label>
 				<Textarea
 					id={id}
@@ -999,14 +1000,14 @@ function ProviderField({
 							? m.header_value_placeholder()
 							: m.json_placeholder()
 					}
-					required={field.required && !secretStored}
+					required={field.required && !secretValueCanBeKept}
 					value={value}
 				/>
 				<p className="text-xs text-muted-foreground">
 					{fieldDescription(field)}
 				</p>
-				{field.secret && secretStored ? (
-					<SecretActions onClear={onClear} />
+				{field.secret && editing ? (
+					<SecretActions clearRequested={clearRequested} onClear={onClear} />
 				) : null}
 			</div>
 		);
@@ -1014,15 +1015,17 @@ function ProviderField({
 		<div className="grid gap-2">
 			<Label htmlFor={id}>
 				{fieldLabel(field)}
-				{field.required && !secretStored ? " *" : ""}
+				{field.required && !secretValueCanBeKept ? " *" : ""}
 			</Label>
 			<Input
 				id={id}
 				onChange={(event) => onChange(event.target.value)}
 				placeholder={
-					secretStored ? m.stored_secret_placeholder() : fieldDescription(field)
+					field.secret && editing
+						? m.leave_blank_to_keep_secret()
+						: fieldDescription(field)
 				}
-				required={field.required && !secretStored}
+				required={field.required && !secretValueCanBeKept}
 				type={
 					field.secret
 						? "password"
@@ -1039,8 +1042,8 @@ function ProviderField({
 					{fieldDescription(field)}
 				</p>
 			)}
-			{field.secret && secretStored ? (
-				<SecretActions onClear={onClear} />
+			{field.secret && editing ? (
+				<SecretActions clearRequested={clearRequested} onClear={onClear} />
 			) : null}
 		</div>
 	);
@@ -1048,7 +1051,8 @@ function ProviderField({
 
 function CustomHeadersField({
 	value,
-	secretStored,
+	editing,
+	clearRequested,
 	onChange,
 	onClear,
 	error,
@@ -1056,7 +1060,8 @@ function CustomHeadersField({
 	onValidationChange,
 }: {
 	readonly value: string;
-	readonly secretStored: boolean;
+	readonly editing: boolean;
+	readonly clearRequested: boolean;
 	readonly onChange: (value: string) => void;
 	readonly onClear: () => void;
 	readonly error?: string;
@@ -1090,12 +1095,20 @@ function CustomHeadersField({
 				onValidationChange={onValidationChange}
 				error={error}
 			/>
-			{secretStored ? <SecretActions onClear={onClear} /> : null}
+			{editing ? (
+				<SecretActions clearRequested={clearRequested} onClear={onClear} />
+			) : null}
 		</div>
 	);
 }
 
-function SecretActions({ onClear }: { readonly onClear: () => void }) {
+function SecretActions({
+	clearRequested,
+	onClear,
+}: {
+	readonly clearRequested: boolean;
+	readonly onClear: () => void;
+}) {
 	return (
 		<Button
 			className="w-fit"
@@ -1104,7 +1117,8 @@ function SecretActions({ onClear }: { readonly onClear: () => void }) {
 			type="button"
 			variant="ghost"
 		>
-			<Trash2 /> {m.clear_stored_value()}
+			<Trash2 />
+			{clearRequested ? m.keep_secret_value() : m.clear_secret_on_save()}
 		</Button>
 	);
 }

@@ -23,10 +23,20 @@ export type ConnectionView = {
 	readonly accessTokenExpiresAt: Date | null;
 	readonly refreshDueAt: Date | null;
 	readonly healthDueAt: Date | null;
-	readonly secretKeys: readonly string[];
 	readonly createdAt: Date;
 	readonly updatedAt: Date;
 };
+
+/** The only client state that changes when a connection is enabled or disabled. */
+export type ConnectionEnabledResult = {
+	readonly enabled: boolean;
+};
+
+export function asConnectionEnabledResult(
+	enabled: boolean,
+): ConnectionEnabledResult {
+	return { enabled };
+}
 
 export type ConnectionDetailsView = ConnectionView & {
 	readonly metrics24h: {

@@ -83,7 +83,7 @@ export function PlaygroundResponsePanel({
 				{response ? (
 					<Tabs defaultValue="body">
 						<TabsList>
-							<TabsTrigger value="body">{m.body()}</TabsTrigger>
+							<TabsTrigger value="body">{m.response_body()}</TabsTrigger>
 							<TabsTrigger value="headers">{m.headers()}</TabsTrigger>
 						</TabsList>
 						<TabsContent value="body" className="mt-3">

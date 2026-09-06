@@ -17,8 +17,10 @@ import { createAssociatedData, encryptSecret } from "#/server/crypto.server";
 import { GatewayError } from "#/server/errors";
 import { parseHttpUrl } from "#/server/url.server";
 import {
+	asConnectionEnabledResult,
 	asJsonObject,
 	type ConnectionDetailsView,
+	type ConnectionEnabledResult,
 	type ConnectionView,
 	isJsonValue,
 	type JsonObject,
@@ -33,6 +35,7 @@ import {
 
 export type {
 	ConnectionDetailsView,
+	ConnectionEnabledResult,
 	ConnectionView,
 	JsonObject,
 	JsonValue,
@@ -318,7 +321,6 @@ function assertFields(
 
 function toView(
 	instance: typeof providerInstances.$inferSelect,
-	secretKeys: readonly string[],
 ): ConnectionView {
 	return {
 		id: instance.id,
@@ -335,21 +337,9 @@ function toView(
 		accessTokenExpiresAt: instance.accessTokenExpiresAt,
 		refreshDueAt: instance.refreshDueAt,
 		healthDueAt: instance.healthDueAt,
-		secretKeys,
 		createdAt: instance.createdAt,
 		updatedAt: instance.updatedAt,
 	};
-}
-
-function actualSecretKeys(
-	template: ProviderTemplate | undefined,
-	keys: readonly string[],
-): string[] {
-	if (!template) return [...keys];
-	const secretFields = new Set(
-		template.fields.filter((field) => field.secret).map((field) => field.key),
-	);
-	return keys.filter((key) => secretFields.has(key));
 }
 
 export async function listConnections(
@@ -365,39 +355,7 @@ export async function listConnections(
 		return [];
 	}
 
-	const secrets = await db
-		.select({
-			fieldKey: providerSecrets.fieldKey,
-			instanceId: providerSecrets.instanceId,
-		})
-		.from(providerSecrets)
-		.where(
-			and(
-				eq(providerSecrets.userId, userId),
-				inArray(
-					providerSecrets.instanceId,
-					instances.map((item) => item.id),
-				),
-			),
-		);
-	const keysByInstance = new Map<string, string[]>();
-	for (const secret of secrets) {
-		const keys = keysByInstance.get(secret.instanceId) ?? [];
-		keys.push(secret.fieldKey);
-		keysByInstance.set(secret.instanceId, keys);
-	}
-
-	return Promise.all(
-		instances.map((instance) =>
-			toView(
-				instance,
-				actualSecretKeys(
-					getProviderTemplate(instance.templateSlug),
-					keysByInstance.get(instance.id) ?? [],
-				),
-			),
-		),
-	);
+	return instances.map((instance) => toView(instance));
 }
 
 export async function getConnection(
@@ -419,22 +377,7 @@ export async function getConnection(
 			"Connection not found.",
 		);
 	}
-	const secrets = await db
-		.select({ fieldKey: providerSecrets.fieldKey })
-		.from(providerSecrets)
-		.where(
-			and(
-				eq(providerSecrets.userId, userId),
-				eq(providerSecrets.instanceId, id),
-			),
-		);
-	return toView(
-		instance,
-		actualSecretKeys(
-			getProviderTemplate(instance.templateSlug),
-			secrets.map((secret) => secret.fieldKey),
-		),
-	);
+	return toView(instance);
 }
 
 export async function getConnectionDetails(
@@ -559,10 +502,7 @@ export async function createConnection(
 		resourceType: "connection",
 		userId,
 	});
-	return toView(
-		instance,
-		secretRows.map((secret) => secret.fieldKey),
-	);
+	return toView(instance);
 }
 
 export async function deleteConnection(
@@ -726,29 +666,14 @@ export async function updateConnection(
 		resourceType: "connection",
 		userId,
 	});
-	const secretRows = await db
-		.select({ fieldKey: providerSecrets.fieldKey })
-		.from(providerSecrets)
-		.where(
-			and(
-				eq(providerSecrets.userId, userId),
-				eq(providerSecrets.instanceId, id),
-			),
-		);
-	return toView(
-		updated,
-		actualSecretKeys(
-			getProviderTemplate(updated.templateSlug),
-			secretRows.map((row) => row.fieldKey),
-		),
-	);
+	return toView(updated);
 }
 
 export async function setConnectionEnabled(
 	userId: string,
 	id: string,
 	enabled: boolean,
-): Promise<ConnectionView> {
+): Promise<ConnectionEnabledResult> {
 	const [updated] = await getDb()
 		.update(providerInstances)
 		.set({ enabled, updatedAt: new Date() })
@@ -768,20 +693,5 @@ export async function setConnectionEnabled(
 		resourceType: "connection",
 		userId,
 	});
-	const secrets = await getDb()
-		.select({ fieldKey: providerSecrets.fieldKey })
-		.from(providerSecrets)
-		.where(
-			and(
-				eq(providerSecrets.userId, userId),
-				eq(providerSecrets.instanceId, id),
-			),
-		);
-	return toView(
-		updated,
-		actualSecretKeys(
-			getProviderTemplate(updated.templateSlug),
-			secrets.map((row) => row.fieldKey),
-		),
-	);
+	return asConnectionEnabledResult(updated.enabled);
 }

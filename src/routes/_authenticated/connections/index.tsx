@@ -5,6 +5,7 @@ import {
 	ArrowRight,
 	CheckCircle2,
 	Link2,
+	LoaderCircle,
 	Pencil,
 	Search,
 	ShieldCheck,
@@ -498,14 +499,6 @@ function ConnectionCard({
 		? new Date(connection.refreshDueAt).getTime()
 		: expiresAt;
 	const tokenRemaining = refreshAt === null ? null : refreshAt - now;
-	const tokenLifetime =
-		expiresAt === null
-			? null
-			: Math.max(expiresAt - new Date(connection.updatedAt).getTime(), 60_000);
-	const tokenProgress =
-		tokenLifetime === null || expiresAt === null
-			? 0
-			: Math.max(0, Math.min(100, ((expiresAt - now) / tokenLifetime) * 100));
 	const clientCredentials =
 		connection.templateSlug === "generic_oauth2" &&
 		connection.config.grant_type === "client_credentials";
@@ -551,9 +544,23 @@ function ConnectionCard({
 					return;
 				}
 				setMessage(m.connection_credentials_updated());
-			} else if (connection.enabled)
-				await disableConnection({ data: { id: connection.id } });
-			else await enableConnection({ data: { id: connection.id } });
+			} else {
+				const result = connection.enabled
+					? await disableConnection({ data: { id: connection.id } })
+					: await enableConnection({ data: { id: connection.id } });
+				queryClient.setQueryData<readonly ConnectionView[]>(
+					queryKeys.connections.list(),
+					(current) =>
+						current?.map((item) =>
+							item.id === connection.id
+								? { ...item, enabled: result.enabled }
+								: item,
+						),
+				);
+				setMessage(
+					result.enabled ? m.connection_enabled() : m.connection_disabled(),
+				);
+			}
 			await queryClient.invalidateQueries({
 				queryKey: queryKeys.connections.all,
 			});
@@ -566,17 +573,18 @@ function ConnectionCard({
 	return (
 		<Card
 			aria-label={connection.name}
+			className="cursor-pointer transition-colors hover:border-primary/35"
 			onClick={openFromCard}
 			onKeyDown={openFromKeyboard}
 			role="button"
 			tabIndex={0}
 		>
-			<CardHeader>
-				<div className="flex items-start justify-between gap-3">
+			<CardHeader className="p-4 pb-2">
+				<div className="flex items-start justify-between gap-2">
 					<div className="flex min-w-0 items-start gap-3">
-						<span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-primary">
+						<span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted text-primary">
 							<ProviderIcon
-								className="size-5"
+								className="size-4"
 								templateSlug={connection.templateSlug}
 								protocol={template?.protocol ?? "oidc"}
 							/>
@@ -598,65 +606,57 @@ function ConnectionCard({
 							</CardDescription>
 						</div>
 					</div>
-					<Badge
-						variant={
-							connection.status === "active" && connection.health === "healthy"
-								? "default"
-								: "secondary"
-						}
-					>
-						{connectionStatusText(connection.status)} ·{" "}
-						{connectionStatusText(connection.health)}
-					</Badge>
+					<div className="flex max-w-1/2 shrink-0 flex-wrap justify-end gap-1">
+						<Badge variant={connection.enabled ? "default" : "outline"}>
+							{connection.enabled ? m.enabled() : m.disabled()}
+						</Badge>
+						<Badge
+							variant={
+								connection.status === "invalid" ? "destructive" : "secondary"
+							}
+						>
+							{connectionStatusText(connection.status)}
+						</Badge>
+						<Badge
+							variant={
+								connection.health === "unhealthy" ? "destructive" : "outline"
+							}
+						>
+							{connectionStatusText(connection.health)}
+						</Badge>
+					</div>
 				</div>
 			</CardHeader>
-			<CardContent className="grid gap-4 text-sm">
-				<p className="truncate font-mono text-xs text-muted-foreground">
-					{connection.baseUrl}
-				</p>
-				<div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-					<span>
-						{connection.secretKeys.length} {m.encrypted_fields()}
-					</span>
-					<span>
+			<CardContent className="grid gap-3 p-4 pt-2 text-sm">
+				<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+					<p className="min-w-0 flex-1 truncate font-mono">
+						{connection.baseUrl}
+					</p>
+					<span className="shrink-0">
 						{m.last_updated()}: {formatDateTime(connection.updatedAt)}
 					</span>
 				</div>
 				{isOauth ? (
-					<div className="grid gap-2">
-						<div className="flex items-center justify-between gap-3 text-xs">
-							<span className="text-muted-foreground">{m.token_refresh()}</span>
-							<span className="font-medium text-foreground">
-								{tokenRemaining === null
-									? m.token_not_available()
-									: tokenRemaining <= 0
-										? m.token_refresh_due()
-										: m.token_refresh_in({
-												minutes: formatDuration(tokenRemaining),
-											})}
-							</span>
-						</div>
-						<div
-							aria-label={m.token_progress()}
-							aria-valuemax={100}
-							aria-valuemin={0}
-							aria-valuenow={tokenProgress}
-							className="h-1.5 overflow-hidden rounded-full bg-muted"
-							role="progressbar"
-						>
-							<div
-								className="h-full rounded-full bg-primary transition-[width] duration-500"
-								style={{ width: `${tokenProgress}%` }}
-							/>
-						</div>
+					<div className="flex items-center justify-between gap-3 border-t pt-2 text-xs">
+						<span className="text-muted-foreground">{m.token_refresh()}</span>
+						<span className="font-medium text-foreground">
+							{tokenRemaining === null
+								? m.token_not_available()
+								: tokenRemaining <= 0
+									? m.token_refresh_due()
+									: m.token_refresh_in({
+											minutes: formatDuration(tokenRemaining),
+										})}
+						</span>
 					</div>
 				) : null}
-				<div className="flex flex-wrap gap-2">
+				<div className="flex flex-wrap gap-1.5 border-t pt-3">
 					<Button
 						disabled={pending.test || !template?.capabilities.test}
 						onClick={() => void run("test")}
 						size="sm"
 						type="button"
+						variant="outline"
 					>
 						<CheckCircle2 /> {pending.test ? m.testing() : m.test()}
 					</Button>
@@ -683,10 +683,22 @@ function ConnectionCard({
 						onClick={() => void run("toggle")}
 						size="sm"
 						type="button"
-						variant="ghost"
+						variant={connection.enabled ? "outline" : "default"}
 					>
-						{connection.enabled ? <ToggleRight /> : <ToggleLeft />}{" "}
-						{connection.enabled ? m.disable() : m.enable()}
+						{pending.toggle ? (
+							<LoaderCircle className="animate-spin" />
+						) : connection.enabled ? (
+							<ToggleRight />
+						) : (
+							<ToggleLeft />
+						)}{" "}
+						{pending.toggle
+							? connection.enabled
+								? m.disabling()
+								: m.enabling()
+							: connection.enabled
+								? m.disable()
+								: m.enable()}
 					</Button>
 					<Button onClick={onEdit} size="sm" type="button" variant="ghost">
 						<Pencil /> {m.edit()}
