@@ -4,6 +4,7 @@ import { getDb } from "#/db/index.server";
 import { appSettings } from "#/db/schema";
 import { recordAuditEvent } from "#/server/audit.server";
 import { GatewayError } from "#/server/errors";
+import { isAlwaysAllowedLoopbackHost } from "#/server/local-origin.server";
 
 export type SystemSettingsView = {
 	readonly allowPrivateNetwork: boolean;
@@ -23,12 +24,12 @@ function normalizePublicOrigin(value: string): string {
 	}
 	if (
 		url.protocol !== "https:" &&
-		!(url.protocol === "http:" && url.hostname === "localhost")
+		!(url.protocol === "http:" && isAlwaysAllowedLoopbackHost(url.hostname))
 	) {
 		throw new GatewayError(
 			400,
 			"INVALID_PUBLIC_ORIGIN",
-			"Use HTTPS, or HTTP only for localhost.",
+			"Use HTTPS, or HTTP only for localhost or 127.0.0.1.",
 		);
 	}
 	if (

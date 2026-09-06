@@ -16,6 +16,7 @@ import { Label } from "#/components/ui/label";
 import { getSetupStatus } from "#/features/auth/auth.functions";
 import { authClient } from "#/features/auth/auth-client";
 import styles from "#/features/auth/auth-page.module.css";
+import { loginCredentialFields } from "#/features/auth/login-credentials";
 import { m } from "#/paraglide/messages.js";
 
 export const Route = createFileRoute("/login")({
@@ -76,7 +77,9 @@ function LoginPage() {
 							<div className={styles.field}>
 								<Label htmlFor="email">{m.email()}</Label>
 								<Input
+									autoComplete={loginCredentialFields.email.autoComplete}
 									id="email"
+									name={loginCredentialFields.email.name}
 									onChange={(event) => setEmail(event.target.value)}
 									required
 									type="email"
@@ -86,7 +89,9 @@ function LoginPage() {
 							<div className={styles.field}>
 								<Label htmlFor="password">{m.password()}</Label>
 								<Input
+									autoComplete={loginCredentialFields.password.autoComplete}
 									id="password"
+									name={loginCredentialFields.password.name}
 									onChange={(event) => setPassword(event.target.value)}
 									required
 									type="password"

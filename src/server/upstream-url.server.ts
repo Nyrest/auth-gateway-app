@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "#/db/index.server";
 import { appSettings } from "#/db/schema";
 import { GatewayError } from "./errors";
+import { isAlwaysAllowedLoopbackHost } from "./local-origin.server";
 import { getRequestRuntime } from "./request-runtime.server";
 
 const policyCache = new WeakMap<object, Promise<boolean>>();
@@ -164,14 +165,23 @@ export function validateUpstreamUrl(
 			"Upstream URLs cannot contain credentials or fragments.",
 		);
 	}
-	if (!allowPrivateNetwork && isUnsafeHostname(url.hostname)) {
+	const isAlwaysAllowedLoopback = isAlwaysAllowedLoopbackHost(url.hostname);
+	if (
+		!allowPrivateNetwork &&
+		!isAlwaysAllowedLoopback &&
+		isUnsafeHostname(url.hostname)
+	) {
 		throw new GatewayError(
 			400,
 			"PRIVATE_UPSTREAM_BLOCKED",
 			"Private and local upstreams require the explicit advanced opt-in.",
 		);
 	}
-	if (url.protocol === "http:" && !allowPrivateNetwork) {
+	if (
+		url.protocol === "http:" &&
+		!allowPrivateNetwork &&
+		!isAlwaysAllowedLoopback
+	) {
 		throw new GatewayError(
 			400,
 			"INSECURE_UPSTREAM_BLOCKED",
@@ -224,6 +234,7 @@ export async function validateOutboundUpstreamUrl(
 	allowPrivateNetwork = false,
 ): Promise<URL> {
 	const url = validateUpstreamUrl(value, allowPrivateNetwork);
+	if (isAlwaysAllowedLoopbackHost(url.hostname)) return url;
 	const literalAddress = parseIpv4(url.hostname) || parseIpv6(url.hostname);
 	if (literalAddress) {
 		if (url.protocol === "http:" && allowPrivateNetwork) {

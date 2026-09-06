@@ -10,17 +10,18 @@ import {
 import { getAuth, getSession } from "#/server/auth.server";
 import { requireUser } from "#/server/auth-middleware";
 import { GatewayError } from "#/server/errors";
+import { isAlwaysAllowedLoopbackHost } from "#/server/local-origin.server";
 
 function normalizeOrigin(value: string): string {
 	const url = new URL(value);
 	if (
 		url.protocol !== "https:" &&
-		!(url.protocol === "http:" && url.hostname === "localhost")
+		!(url.protocol === "http:" && isAlwaysAllowedLoopbackHost(url.hostname))
 	) {
 		throw new GatewayError(
 			400,
 			"INVALID_PUBLIC_ORIGIN",
-			"Use HTTPS, or HTTP only for localhost.",
+			"Use HTTPS, or HTTP only for localhost or 127.0.0.1.",
 		);
 	}
 	if (

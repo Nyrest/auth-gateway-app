@@ -14,7 +14,7 @@ describe("connection outbound URL validation", () => {
 				genericOauth2,
 				"https://api.example.com",
 				{
-					authorization_url: "http://127.0.0.1/authorize",
+					authorization_url: "http://127.0.0.2/authorize",
 					token_url: "https://oauth.example.com/token",
 				},
 				publicUrlValidator,
@@ -25,7 +25,7 @@ describe("connection outbound URL validation", () => {
 			validateConnectionOutboundUrls(
 				genericOidc,
 				"https://api.example.com",
-				{ issuer: "http://127.0.0.1" },
+				{ issuer: "http://127.0.0.2" },
 				publicUrlValidator,
 			),
 		).rejects.toThrow("Private and local upstreams");
@@ -34,7 +34,7 @@ describe("connection outbound URL validation", () => {
 			validateConnectionOutboundUrls(
 				genericBasic,
 				"https://api.example.com",
-				{ test_url: "http://127.0.0.1/health" },
+				{ test_url: "http://127.0.0.2/health" },
 				publicUrlValidator,
 			),
 		).rejects.toThrow("Private and local upstreams");

@@ -27,7 +27,7 @@
 	"password_too_long": "Password must be 128 characters or fewer.",
 	"public_origin_required": "Public origin is required.",
 	"public_origin_invalid": "Enter a valid public origin URL.",
-	"public_origin_https": "Use HTTPS, or HTTP only for localhost.",
+	"public_origin_https": "Use HTTPS, or HTTP only for localhost or 127.0.0.1.",
 	"public_origin_restricted": "Public origin must not include a path, query, or credentials.",
 	"setup_already_claimed": "This installation has already been claimed.",
 	"invalid_email_or_password": "Invalid email or password.",
@@ -52,9 +52,9 @@
 	"streaming_description": "Send the generated API key as a Bearer token. The gateway forwards eligible requests and preserves upstream response streaming."
 	,"settings_description": "Manage deployment-wide security and account settings."
 	,"network_policy_title": "Upstream network policy"
-	,"network_policy_description": "This system-wide policy controls whether connections may reach private or local network addresses."
-	,"allow_private_upstreams": "Allow private and local upstreams"
-	,"allow_private_upstreams_description": "Only enable this when your deployment intentionally needs internal upstream services."
+	,"network_policy_description": "This system-wide policy controls whether connections may reach private network addresses. localhost and 127.0.0.1 are always allowed."
+	,"allow_private_upstreams": "Allow private upstreams"
+	,"allow_private_upstreams_description": "Only enable this when your deployment intentionally needs other internal upstream services."
 	,"settings_update_failed": "The system setting could not be updated."
 	,"public_origin_settings": "Public origin"
 	,"public_origin_settings_description": "The externally reachable origin used for OAuth callbacks."

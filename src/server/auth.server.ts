@@ -7,6 +7,7 @@ import { uuidv7 } from "uuidv7";
 import { appSettings, gatewaySchema } from "#/db/schema";
 
 import { type GatewayDatabase, getDb } from "../db/index.server";
+import { createAuthBaseUrl } from "./auth-origin.server";
 import { getBetterAuthSecret } from "./config.server";
 
 export async function getAuth(
@@ -26,7 +27,7 @@ export async function getAuth(
 
 	return betterAuth({
 		appName: "Auth Gateway",
-		baseURL: publicOrigin,
+		baseURL: publicOrigin ? createAuthBaseUrl(publicOrigin) : undefined,
 		secret: getBetterAuthSecret(),
 		database: drizzleAdapter(db, {
 			provider: "pg",
@@ -50,9 +51,7 @@ export async function getAuth(
 		},
 		advanced: {
 			database: { generateId: () => uuidv7() },
-			useSecureCookies: publicOrigin?.startsWith("https://") ?? false,
 		},
-		trustedOrigins: publicOrigin ? [publicOrigin] : [],
 		databaseHooks: {
 			user: {
 				create: {

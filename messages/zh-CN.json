@@ -27,7 +27,7 @@
 	"password_too_long": "密码不能超过 128 个字符。",
 	"public_origin_required": "请输入公开源站。",
 	"public_origin_invalid": "请输入有效的公开源站 URL。",
-	"public_origin_https": "请使用 HTTPS；仅 localhost 可使用 HTTP。",
+	"public_origin_https": "请使用 HTTPS；仅 localhost 或 127.0.0.1 可使用 HTTP。",
 	"public_origin_restricted": "公开源站不能包含路径、查询参数或凭据。",
 	"setup_already_claimed": "此安装已完成初始化。",
 	"invalid_email_or_password": "邮箱或密码错误。",
@@ -52,9 +52,9 @@
 	"streaming_description": "将生成的 API 密钥作为 Bearer 令牌发送。网关会转发合格请求并保留上游响应流。"
 	,"settings_description": "管理系统级安全策略和账户设置。"
 	,"network_policy_title": "上游网络策略"
-	,"network_policy_description": "此系统级策略控制连接是否可以访问私有或本地网络地址。"
-	,"allow_private_upstreams": "允许私有和本地上游"
-	,"allow_private_upstreams_description": "仅在部署确实需要访问内部上游服务时启用。"
+	,"network_policy_description": "此系统级策略控制连接是否可以访问私有网络地址。localhost 和 127.0.0.1 始终允许。"
+	,"allow_private_upstreams": "允许私有上游"
+	,"allow_private_upstreams_description": "仅在部署确实需要访问其他内部上游服务时启用。"
 	,"settings_update_failed": "无法更新系统设置。"
 	,"public_origin_settings": "公开源站"
 	,"public_origin_settings_description": "用于 OAuth 回调的外部可访问源站地址。"
