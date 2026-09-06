@@ -1,5 +1,4 @@
 import { GatewayError } from "./errors";
-import { validateConfiguredUpstreamUrl } from "./upstream-url.server";
 
 const maximumJsonResponseBytes = 256 * 1024;
 const defaultJsonResponseTimeoutMs = 10_000;
@@ -9,19 +8,17 @@ type OutboundRequestInit = RequestInit & {
 };
 
 /**
- * Validate every dynamic destination immediately before dispatching it. The
- * timeout covers connection and response headers only, so returned streams are
- * never buffered or cut off by this helper.
+ * The timeout covers connection and response headers only, so returned streams
+ * are never buffered or cut off by this helper.
  */
-export async function fetchConfiguredUpstream(
+export async function fetchUpstream(
 	value: string | URL,
 	{ timeoutMs = 30_000, ...init }: OutboundRequestInit = {},
 ): Promise<Response> {
-	const target = await validateConfiguredUpstreamUrl(value.toString());
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	try {
-		return await fetch(target, {
+		return await fetch(value, {
 			...init,
 			credentials: "omit",
 			signal: init.signal ?? controller.signal,

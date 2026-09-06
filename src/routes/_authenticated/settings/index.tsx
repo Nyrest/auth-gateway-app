@@ -5,7 +5,6 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { LoaderCircle, ShieldAlert } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import { PageHeader } from "#/components/layout/app-shell";
@@ -19,10 +18,9 @@ import {
 } from "#/components/ui/card";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
-import { Switch } from "#/components/ui/switch";
 import { changePassword } from "#/features/auth/auth.functions";
 import { updateSystemSettingsForUser } from "#/features/settings/settings.functions";
-import { queryKeys, systemSettingsQueryOptions } from "#/lib/api";
+import { systemSettingsQueryOptions } from "#/lib/api";
 import { m } from "#/paraglide/messages.js";
 
 export const Route = createFileRoute("/_authenticated/settings/")({
@@ -49,7 +47,6 @@ function SettingsPage() {
 			);
 			queryClient.setQueryData(systemSettingsQueryOptions().queryKey, {
 				publicOrigin: data.publicOrigin ?? settings.publicOrigin,
-				allowPrivateNetwork: data.allowPrivateNetwork,
 			});
 			return { previous };
 		},
@@ -62,14 +59,9 @@ function SettingsPage() {
 			}
 		},
 		onSettled: () =>
-			Promise.all([
-				queryClient.invalidateQueries({
-					queryKey: systemSettingsQueryOptions().queryKey,
-				}),
-				queryClient.invalidateQueries({
-					queryKey: queryKeys.connections.all,
-				}),
-			]),
+			queryClient.invalidateQueries({
+				queryKey: systemSettingsQueryOptions().queryKey,
+			}),
 	});
 	const [currentPassword, setCurrentPassword] = useState("");
 	const [newPassword, setNewPassword] = useState("");
@@ -92,48 +84,6 @@ function SettingsPage() {
 		<>
 			<PageHeader description={m.settings_description()} title={m.settings()} />
 			<div className="grid min-w-0 max-w-5xl gap-4 lg:grid-cols-2">
-				<Card className="min-w-0 lg:col-span-2">
-					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
-							<ShieldAlert className="size-4 text-muted-foreground" />
-							{m.network_policy_title()}
-						</CardTitle>
-						<CardDescription>{m.network_policy_description()}</CardDescription>
-					</CardHeader>
-					<CardContent className="grid gap-3">
-						<div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/20 p-3">
-							<div className="grid min-w-0 gap-1">
-								<Label htmlFor="allow-private-upstreams">
-									{m.allow_private_upstreams()}
-								</Label>
-								<p className="text-xs text-muted-foreground">
-									{m.allow_private_upstreams_description()}
-								</p>
-							</div>
-							<Switch
-								checked={settings.allowPrivateNetwork}
-								disabled={settingsMutation.isPending}
-								id="allow-private-upstreams"
-								onCheckedChange={(checked) =>
-									settingsMutation.mutate({
-										data: {
-											allowPrivateNetwork: checked,
-											...(publicOrigin.trim() ? { publicOrigin } : {}),
-										},
-									})
-								}
-							/>
-						</div>
-						{settingsMutation.isPending ? (
-							<LoaderCircle className="size-4 animate-spin text-muted-foreground" />
-						) : null}
-						{settingsMutation.isError ? (
-							<p className="text-sm text-destructive" role="alert">
-								{m.settings_update_failed()}
-							</p>
-						) : null}
-					</CardContent>
-				</Card>
 				<Card className="min-w-0">
 					<CardHeader>
 						<CardTitle>{m.public_origin_settings()}</CardTitle>
@@ -157,7 +107,6 @@ function SettingsPage() {
 								onClick={() =>
 									settingsMutation.mutate({
 										data: {
-											allowPrivateNetwork: settings.allowPrivateNetwork,
 											publicOrigin,
 										},
 									})
@@ -166,6 +115,11 @@ function SettingsPage() {
 								{m.save_settings()}
 							</Button>
 						</div>
+						{settingsMutation.isError ? (
+							<p className="text-sm text-destructive" role="alert">
+								{m.settings_update_failed()}
+							</p>
+						) : null}
 					</CardContent>
 				</Card>
 				<Card className="min-w-0">

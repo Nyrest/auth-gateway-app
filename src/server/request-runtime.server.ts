@@ -12,7 +12,6 @@ import type {
 import { decodeRootSecret } from "#/runtime/secret.server";
 
 import { createDeferredWork } from "./deferred-work.server";
-import { resolveHostnameOverHttps } from "./hostname-resolution.server";
 
 let developmentServices: RuntimeServices | undefined;
 
@@ -23,7 +22,6 @@ function getDevelopmentServices(): RuntimeServices {
 	developmentServices = {
 		database: createDatabase(getDatabaseUrl(), 5),
 		kind: "bun",
-		resolveHostname: resolveHostnameOverHttps,
 		rootSecret: decodeRootSecret(configured),
 	};
 	return developmentServices;

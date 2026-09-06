@@ -121,5 +121,5 @@ The Compose database is private to the stack and persists in a named volume.
 
 - Provider credentials and custom header values are encrypted at rest and are never included in connection list responses.
 - Proxy API keys are scoped to the providers you select and can be revoked from the dashboard.
-- `localhost` and `127.0.0.1` are always permitted as upstream origins; other private-network addresses require the owner-only setting. In a Cloudflare Worker, these loopback addresses refer to the Worker runtime, not your computer.
+- Upstream requests are sent to the HTTP(S) URLs configured on each connection, including internal destinations.
 - If you are upgrading from an early development build, recreate the database before running `bun run db:migrate`; databases created by the retired schema are not supported.

@@ -24,7 +24,6 @@ export type ConnectionView = {
 	readonly refreshDueAt: Date | null;
 	readonly healthDueAt: Date | null;
 	readonly secretKeys: readonly string[];
-	readonly policyBlocked: boolean;
 	readonly createdAt: Date;
 	readonly updatedAt: Date;
 };

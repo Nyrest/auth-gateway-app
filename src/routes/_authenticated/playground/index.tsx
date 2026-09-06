@@ -69,8 +69,7 @@ function isReady(connection: ConnectionView): boolean {
 	return (
 		connection.enabled &&
 		connection.status === "active" &&
-		connection.health === "healthy" &&
-		!connection.policyBlocked
+		connection.health === "healthy"
 	);
 }
 

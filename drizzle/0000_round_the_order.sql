@@ -22,7 +22,6 @@ CREATE TABLE "app_settings" (
 	"id" text PRIMARY KEY DEFAULT 'primary' NOT NULL,
 	"owner_user_id" uuid,
 	"public_origin" text,
-	"allow_private_network" boolean DEFAULT false NOT NULL,
 	"metrics_cleanup_due_at" timestamp with time zone,
 	"scheduler_lease_until" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -201,5 +200,4 @@ CREATE INDEX "request_metric_user_occurred_idx" ON "request_metric" USING btree 
 CREATE INDEX "request_metric_user_provider_occurred_idx" ON "request_metric" USING btree ("user_id","provider_slug","occurred_at");--> statement-breakpoint
 CREATE INDEX "request_metric_user_status_occurred_idx" ON "request_metric" USING btree ("user_id","status_code","occurred_at");--> statement-breakpoint
 CREATE INDEX "request_metric_user_instance_occurred_idx" ON "request_metric" USING btree ("user_id","instance_id","occurred_at");--> statement-breakpoint
-CREATE INDEX "request_metric_occurred_idx" ON "request_metric" USING btree ("occurred_at");--> statement-breakpoint
-INSERT INTO "app_settings" ("id") VALUES ('primary') ON CONFLICT ("id") DO NOTHING;
+CREATE INDEX "request_metric_occurred_idx" ON "request_metric" USING btree ("occurred_at");

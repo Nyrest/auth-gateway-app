@@ -56,10 +56,6 @@ export const appSettings = pgTable("app_settings", {
 		onDelete: "set null",
 	}),
 	publicOrigin: text("public_origin"),
-	/** System-wide SSRF policy. Disabled by default. */
-	allowPrivateNetwork: boolean("allow_private_network")
-		.notNull()
-		.default(false),
 	metricsCleanupDueAt: timestamp("metrics_cleanup_due_at", {
 		withTimezone: true,
 	}),

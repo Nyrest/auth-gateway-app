@@ -49,7 +49,6 @@ export function oidcFields(): readonly ProviderField[] {
 		stringField("issuer", "provider_field_issuer", {
 			required: true,
 			secret: false,
-			outboundUrl: "absolute",
 		}),
 		stringField("client_id", "provider_field_client_id", {
 			required: true,

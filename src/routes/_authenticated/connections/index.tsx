@@ -605,8 +605,6 @@ function ConnectionCard({
 								: "secondary"
 						}
 					>
-						{connection.policyBlocked ? m.policy_blocked() : null}
-						{connection.policyBlocked ? " · " : null}
 						{connectionStatusText(connection.status)} ·{" "}
 						{connectionStatusText(connection.health)}
 					</Badge>

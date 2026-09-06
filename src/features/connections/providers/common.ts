@@ -7,7 +7,6 @@ export const baseUrlField: ProviderField = {
 	type: "string",
 	required: true,
 	secret: false,
-	outboundUrl: "absolute",
 };
 
 /** Optional encrypted headers shared by every generic and predefined provider. */
@@ -46,7 +45,6 @@ export const testFields: readonly ProviderField[] = [
 		type: "string",
 		required: true,
 		secret: false,
-		outboundUrl: "relative_or_absolute",
 	},
 	{
 		key: "test_body",
@@ -62,7 +60,6 @@ export const mcpBaseFields: readonly ProviderField[] = [
 	stringField("mcp_server_url", "provider_field_mcp_server_url", {
 		required: true,
 		secret: false,
-		outboundUrl: "absolute",
 	}),
 	{
 		key: "transport",
@@ -91,7 +88,7 @@ export function stringField(
 	key: string,
 	labelKey: ProviderField["labelKey"],
 	options: Pick<ProviderField, "required" | "secret"> &
-		Partial<Pick<ProviderField, "descriptionKey" | "outboundUrl">>,
+		Partial<Pick<ProviderField, "descriptionKey">>,
 ): ProviderField {
 	return {
 		key,
@@ -102,6 +99,5 @@ export function stringField(
 		type: "string",
 		required: options.required,
 		secret: options.secret,
-		...(options.outboundUrl ? { outboundUrl: options.outboundUrl } : {}),
 	};
 }

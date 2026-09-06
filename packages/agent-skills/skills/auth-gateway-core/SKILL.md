@@ -22,4 +22,4 @@ Keep provider secrets in per-field AES-GCM envelopes with associated data contai
 - Treating `_authenticated` route loaders as authorization. Call the auth middleware in each private server function.
 - Reading another tenant's record by ID without including `userId` in the predicate.
 - Reusing one nonce or storing an entire secret object in plaintext instead of encrypting fields independently.
-- Adding an environment variable for data that belongs in the database (for example public origin or private-network opt-in).
+- Adding an environment variable for data that belongs in the database (for example public origin).

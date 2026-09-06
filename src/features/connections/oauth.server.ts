@@ -18,14 +18,10 @@ import {
 import { applyCustomHeaders } from "#/server/custom-headers.server";
 import { GatewayError } from "#/server/errors";
 import {
-	fetchConfiguredUpstream,
+	fetchUpstream,
 	readJsonResponse,
 } from "#/server/outbound-request.server";
-import {
-	getAllowPrivateNetwork,
-	validateConfiguredUpstreamUrl,
-	validateOutboundUpstreamUrl,
-} from "#/server/upstream-url.server";
+import { parseHttpUrl } from "#/server/url.server";
 import {
 	createPkceChallenge,
 	createPkceVerifier,
@@ -81,22 +77,14 @@ function normalisePublicOrigin(value: string | null): string {
 async function validateOAuthEndpoint(
 	value: string,
 	label: string,
-	allowPrivateNetwork = false,
 ): Promise<string> {
 	try {
-		return (
-			await validateOutboundUpstreamUrl(value, allowPrivateNetwork)
-		).toString();
-	} catch (error) {
-		// Preserve the system policy error so callers can localize and explain
-		// why an otherwise valid endpoint was blocked.
-		if (error instanceof GatewayError) {
-			throw error;
-		}
+		return parseHttpUrl(value).toString();
+	} catch {
 		throw new GatewayError(
 			400,
 			"INVALID_OAUTH_ENDPOINT",
-			`${label} must be a public HTTP(S) URL.`,
+			`${label} must be a valid HTTP(S) URL.`,
 		);
 	}
 }
@@ -106,20 +94,14 @@ async function resolveOAuthEndpoints(
 	config: unknown,
 	secrets: ReadonlyMap<string, string>,
 ): Promise<OAuthEndpoints> {
-	const allowPrivateNetwork = await getAllowPrivateNetwork();
 	const predefined = getOAuthEndpoints(templateSlug);
 	if (predefined) {
 		return {
 			authorizationUrl: await validateOAuthEndpoint(
 				predefined.authorizationUrl,
 				"Authorization URL",
-				allowPrivateNetwork,
 			),
-			tokenUrl: await validateOAuthEndpoint(
-				predefined.tokenUrl,
-				"Token URL",
-				allowPrivateNetwork,
-			),
+			tokenUrl: await validateOAuthEndpoint(predefined.tokenUrl, "Token URL"),
 		};
 	}
 	if (
@@ -139,13 +121,8 @@ async function resolveOAuthEndpoints(
 			authorizationUrl: await validateOAuthEndpoint(
 				authorizationUrl,
 				"Authorization URL",
-				allowPrivateNetwork,
 			),
-			tokenUrl: await validateOAuthEndpoint(
-				tokenUrl,
-				"Token URL",
-				allowPrivateNetwork,
-			),
+			tokenUrl: await validateOAuthEndpoint(tokenUrl, "Token URL"),
 		};
 	}
 	if (templateSlug === "generic_oidc") {
@@ -157,10 +134,7 @@ async function resolveOAuthEndpoints(
 				"An OIDC issuer is required.",
 			);
 		}
-		const issuerUrl = await validateOutboundUpstreamUrl(
-			issuer,
-			allowPrivateNetwork,
-		);
+		const issuerUrl = parseHttpUrl(issuer);
 		const discoveryUrl = new URL(
 			".well-known/openid-configuration",
 			`${issuerUrl.toString().replace(/\/$/, "")}/`,
@@ -169,7 +143,7 @@ async function resolveOAuthEndpoints(
 		applyCustomHeaders(discoveryHeaders, secrets);
 		let response: Response;
 		try {
-			response = await fetchConfiguredUpstream(discoveryUrl, {
+			response = await fetchUpstream(discoveryUrl, {
 				headers: discoveryHeaders,
 				redirect: "error",
 				timeoutMs: 10_000,
@@ -202,7 +176,6 @@ async function resolveOAuthEndpoints(
 		const discoveredIssuer = await validateOAuthEndpoint(
 			document.issuer,
 			"OIDC issuer",
-			allowPrivateNetwork,
 		);
 		if (
 			new URL(discoveredIssuer).toString().replace(/\/$/, "") !==
@@ -218,12 +191,10 @@ async function resolveOAuthEndpoints(
 			authorizationUrl: await validateOAuthEndpoint(
 				document.authorizationEndpoint,
 				"OIDC authorization endpoint",
-				allowPrivateNetwork,
 			),
 			tokenUrl: await validateOAuthEndpoint(
 				document.tokenEndpoint,
 				"OIDC token endpoint",
-				allowPrivateNetwork,
 			),
 		};
 	}
@@ -262,8 +233,6 @@ async function requestToken(
 	body: URLSearchParams,
 	secrets: ReadonlyMap<string, string>,
 ): Promise<TokenResponse> {
-	// Validate immediately before every outbound token request so a runtime
-	// policy change takes effect without restarting the process.
 	let response: Response;
 	try {
 		const headers = new Headers({
@@ -271,7 +240,7 @@ async function requestToken(
 			"content-type": "application/x-www-form-urlencoded",
 		});
 		applyCustomHeaders(headers, secrets);
-		response = await fetchConfiguredUpstream(tokenUrl, {
+		response = await fetchUpstream(tokenUrl, {
 			method: "POST",
 			headers,
 			body,
@@ -426,7 +395,6 @@ export async function beginOAuthConnection(
 			"Connection not found.",
 		);
 	}
-	await validateConfiguredUpstreamUrl(instance.baseUrl);
 	const secrets = await readConnectionSecrets(userId, instance.id);
 	const endpoints = await resolveOAuthEndpoints(
 		instance.templateSlug,
@@ -586,7 +554,6 @@ export async function finishOAuthConnection(callback: {
 			"The OAuth connection no longer exists.",
 		);
 	}
-	await validateConfiguredUpstreamUrl(instance.baseUrl);
 	const secrets = await readConnectionSecrets(record.userId, record.instanceId);
 	const [settings] = await db
 		.select()
@@ -663,7 +630,6 @@ export async function connectClientCredentials(
 			"This connection is not configured for client credentials.",
 		);
 	}
-	await validateConfiguredUpstreamUrl(instance.baseUrl);
 	const secrets = await readConnectionSecrets(userId, instanceId);
 	const tokenUrl = (
 		await resolveOAuthEndpoints(instance.templateSlug, instance.config, secrets)
@@ -708,7 +674,6 @@ export async function refreshOAuthConnection(
 		return false;
 	}
 	try {
-		await validateConfiguredUpstreamUrl(instance.baseUrl);
 		const secrets = await readConnectionSecrets(userId, instanceId);
 		const refreshToken = secrets.get("refresh_token");
 		if (!refreshToken) {
@@ -744,13 +709,7 @@ export async function refreshOAuthConnection(
 			expectedRefreshLeaseUntil,
 		});
 		return persisted;
-	} catch (error) {
-		if (
-			error instanceof GatewayError &&
-			error.code === "PRIVATE_UPSTREAM_BLOCKED"
-		) {
-			return false;
-		}
+	} catch {
 		await getDb()
 			.update(providerInstances)
 			.set({

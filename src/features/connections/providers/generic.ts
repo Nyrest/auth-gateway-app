@@ -46,12 +46,10 @@ export const genericOauth2: ProviderDefinition = {
 		stringField("authorization_url", "provider_field_authorization_url", {
 			required: false,
 			secret: false,
-			outboundUrl: "absolute",
 		}),
 		stringField("token_url", "provider_field_token_url", {
 			required: false,
 			secret: false,
-			outboundUrl: "absolute",
 		}),
 		stringField("scopes", "provider_field_scopes", {
 			required: false,
@@ -211,12 +209,10 @@ export const genericMcpOauth: ProviderDefinition = {
 		stringField("authorization_url", "provider_field_authorization_url", {
 			required: true,
 			secret: false,
-			outboundUrl: "absolute",
 		}),
 		stringField("token_url", "provider_field_token_url", {
 			required: true,
 			secret: false,
-			outboundUrl: "absolute",
 		}),
 		stringField("scopes", "provider_field_scopes", {
 			required: false,

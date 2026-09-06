@@ -12,9 +12,6 @@ export type ProviderFieldType =
 	| "multi_select"
 	| "single_select";
 
-/** How an outbound URL field is resolved before the system network policy runs. */
-export type ProviderOutboundUrlMode = "absolute" | "relative_or_absolute";
-
 export type ProviderFieldDefinition = {
 	readonly key: string;
 	readonly labelKey: MessageKey;
@@ -23,8 +20,6 @@ export type ProviderFieldDefinition = {
 	readonly required: boolean;
 	/** Secret fields are encrypted and never returned in connection config. */
 	readonly secret: boolean;
-	/** Outbound URLs are checked against the deployment-wide network policy. */
-	readonly outboundUrl?: ProviderOutboundUrlMode;
 	readonly defaultValue?: string | number | boolean | readonly string[];
 	readonly options?: readonly string[];
 	readonly visibleWhen?: Readonly<{ field: string; equals: string }>;

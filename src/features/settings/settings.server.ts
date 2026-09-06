@@ -7,7 +7,6 @@ import { GatewayError } from "#/server/errors";
 import { isAlwaysAllowedLoopbackHost } from "#/server/local-origin.server";
 
 export type SystemSettingsView = {
-	readonly allowPrivateNetwork: boolean;
 	readonly publicOrigin: string | null;
 };
 
@@ -51,14 +50,12 @@ function normalizePublicOrigin(value: string): string {
 export async function getSystemSettings(): Promise<SystemSettingsView> {
 	const [settings] = await getDb()
 		.select({
-			allowPrivateNetwork: appSettings.allowPrivateNetwork,
 			publicOrigin: appSettings.publicOrigin,
 		})
 		.from(appSettings)
 		.where(eq(appSettings.id, "primary"))
 		.limit(1);
 	return {
-		allowPrivateNetwork: settings?.allowPrivateNetwork ?? false,
 		publicOrigin: settings?.publicOrigin ?? null,
 	};
 }
@@ -81,7 +78,6 @@ async function assertOwner(userId: string): Promise<void> {
 export async function updateSystemSettings(
 	userId: string,
 	input: {
-		readonly allowPrivateNetwork: boolean;
 		readonly publicOrigin?: string;
 	},
 ): Promise<SystemSettingsView> {
@@ -98,13 +94,11 @@ export async function updateSystemSettings(
 	const [updated] = await getDb()
 		.update(appSettings)
 		.set({
-			allowPrivateNetwork: input.allowPrivateNetwork,
 			publicOrigin,
 			updatedAt: now,
 		})
 		.where(eq(appSettings.id, "primary"))
 		.returning({
-			allowPrivateNetwork: appSettings.allowPrivateNetwork,
 			publicOrigin: appSettings.publicOrigin,
 		});
 	if (!updated) {
@@ -117,7 +111,6 @@ export async function updateSystemSettings(
 	recordAuditEvent({
 		action: "system_settings.updated",
 		metadata: {
-			allowPrivateNetwork: updated.allowPrivateNetwork,
 			publicOrigin: updated.publicOrigin,
 		},
 		resourceType: "system_settings",

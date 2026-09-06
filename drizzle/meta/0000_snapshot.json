@@ -1,5 +1,5 @@
 {
-  "id": "e09efc46-a731-4c7c-9141-58a625f92d50",
+  "id": "01a108d4-2525-4f00-8320-f564ab323987",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -191,13 +191,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "allow_private_network": {
-          "name": "allow_private_network",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "metrics_cleanup_due_at": {
           "name": "metrics_cleanup_due_at",

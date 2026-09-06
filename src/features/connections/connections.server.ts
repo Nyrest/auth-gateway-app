@@ -15,7 +15,7 @@ import {
 import { recordAuditEvent } from "#/server/audit.server";
 import { createAssociatedData, encryptSecret } from "#/server/crypto.server";
 import { GatewayError } from "#/server/errors";
-import { validateConfiguredUpstreamUrl } from "#/server/upstream-url.server";
+import { parseHttpUrl } from "#/server/url.server";
 import {
 	asJsonObject,
 	type ConnectionDetailsView,
@@ -316,68 +316,9 @@ function assertFields(
 	return config;
 }
 
-type ConfiguredUpstreamValidator = (value: string) => Promise<URL>;
-
-/**
- * Validate every user-configurable URL that may result in an outbound request.
- * Relative test URLs intentionally resolve against the validated connection base.
- */
-export async function validateConnectionOutboundUrls(
-	template: ProviderTemplate,
-	baseUrlValue: string,
-	config: JsonObject,
-	validateUrl: ConfiguredUpstreamValidator = validateConfiguredUpstreamUrl,
-): Promise<URL> {
-	const baseUrl = await validateUrl(baseUrlValue);
-
-	for (const field of template.fields) {
-		if (!field.outboundUrl || field.key === "base_url") continue;
-		const value = config[field.key];
-		if (isEmptyProviderValue(value)) continue;
-		if (typeof value !== "string") {
-			invalidProviderField(field.key, "must be text");
-		}
-
-		let outboundUrl = value;
-		if (field.outboundUrl === "relative_or_absolute") {
-			try {
-				outboundUrl = new URL(value, baseUrl).toString();
-			} catch {
-				invalidProviderField(field.key, "must contain a valid URL");
-			}
-		}
-		await validateUrl(outboundUrl);
-	}
-
-	return baseUrl;
-}
-
-async function isBlockedByNetworkPolicy(
-	template: ProviderTemplate | undefined,
-	baseUrl: string,
-	config: JsonObject,
-): Promise<boolean> {
-	try {
-		if (template) {
-			await validateConnectionOutboundUrls(template, baseUrl, config);
-		} else {
-			await validateConfiguredUpstreamUrl(baseUrl);
-		}
-		return false;
-	} catch (error) {
-		return (
-			error instanceof GatewayError &&
-			(error.code === "PRIVATE_UPSTREAM_BLOCKED" ||
-				error.code === "UPSTREAM_DNS_UNAVAILABLE" ||
-				error.code === "UPSTREAM_DNS_UNRESOLVABLE")
-		);
-	}
-}
-
 function toView(
 	instance: typeof providerInstances.$inferSelect,
 	secretKeys: readonly string[],
-	policyBlocked = false,
 ): ConnectionView {
 	return {
 		id: instance.id,
@@ -395,7 +336,6 @@ function toView(
 		refreshDueAt: instance.refreshDueAt,
 		healthDueAt: instance.healthDueAt,
 		secretKeys,
-		policyBlocked,
 		createdAt: instance.createdAt,
 		updatedAt: instance.updatedAt,
 	};
@@ -448,22 +388,15 @@ export async function listConnections(
 	}
 
 	return Promise.all(
-		instances.map(async (instance) => {
-			const config = asJsonObject(instance.config);
-			const policyBlocked = await isBlockedByNetworkPolicy(
-				getProviderTemplate(instance.templateSlug),
-				instance.baseUrl,
-				config,
-			);
-			return toView(
+		instances.map((instance) =>
+			toView(
 				instance,
 				actualSecretKeys(
 					getProviderTemplate(instance.templateSlug),
 					keysByInstance.get(instance.id) ?? [],
 				),
-				policyBlocked,
-			);
-		}),
+			),
+		),
 	);
 }
 
@@ -495,19 +428,12 @@ export async function getConnection(
 				eq(providerSecrets.instanceId, id),
 			),
 		);
-	const config = asJsonObject(instance.config);
-	const policyBlocked = await isBlockedByNetworkPolicy(
-		getProviderTemplate(instance.templateSlug),
-		instance.baseUrl,
-		config,
-	);
 	return toView(
 		instance,
 		actualSecretKeys(
 			getProviderTemplate(instance.templateSlug),
 			secrets.map((secret) => secret.fieldKey),
 		),
-		policyBlocked,
 	);
 }
 
@@ -561,11 +487,7 @@ export async function createConnection(
 	const providerSlug = assertProviderSlug(data.providerSlug);
 	const secrets = normalizeSecretValues(data.secrets);
 	const config = assertFields(template, { ...data, secrets });
-	const baseUrl = (
-		await validateConnectionOutboundUrls(template, data.baseUrl, config)
-	)
-		.toString()
-		.replace(/\/$/, "");
+	const baseUrl = parseHttpUrl(data.baseUrl).toString().replace(/\/$/, "");
 	await runProviderValidator(template, {
 		baseUrl,
 		config,
@@ -733,11 +655,7 @@ export async function updateConnection(
 		config: data.config,
 		secrets: nextSecrets,
 	});
-	const baseUrl = (
-		await validateConnectionOutboundUrls(template, data.baseUrl, config)
-	)
-		.toString()
-		.replace(/\/$/, "");
+	const baseUrl = parseHttpUrl(data.baseUrl).toString().replace(/\/$/, "");
 	await runProviderValidator(template, {
 		baseUrl,
 		config,

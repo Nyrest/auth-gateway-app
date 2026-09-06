@@ -14,7 +14,6 @@ export const updateSystemSettingsForUser = createServerFn({ method: "POST" })
 	.validator(
 		z
 			.object({
-				allowPrivateNetwork: z.boolean(),
 				publicOrigin: z.url().max(2_048).optional(),
 			})
 			.strict(),

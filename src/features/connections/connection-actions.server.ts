@@ -4,15 +4,12 @@ import { providerInstances } from "#/db/schema";
 import { recordAuditEvent } from "#/server/audit.server";
 import { applyCustomHeaders } from "#/server/custom-headers.server";
 import { GatewayError } from "#/server/errors";
-import { fetchConfiguredUpstream } from "#/server/outbound-request.server";
+import { fetchUpstream } from "#/server/outbound-request.server";
 import {
 	applyProviderPolicy,
 	injectConnectionCredentials,
 } from "#/server/proxy.server";
-import {
-	appendUpstreamPath,
-	validateConfiguredUpstreamUrl,
-} from "#/server/upstream-url.server";
+import { appendUpstreamPath, parseHttpUrl } from "#/server/url.server";
 
 import { readConnectionSecrets } from "./secrets.server";
 import { getProviderTemplate } from "./templates";
@@ -61,30 +58,11 @@ export async function verifyConnection(
 	}
 	const template = getProviderTemplate(instance.templateSlug);
 	const configuredTestUrl = configString(instance.config, "test_url");
-	let baseUrl: URL;
-	try {
-		baseUrl = await validateConfiguredUpstreamUrl(instance.baseUrl);
-	} catch (error) {
-		if (
-			error instanceof GatewayError &&
-			error.code === "PRIVATE_UPSTREAM_BLOCKED"
-		) {
-			recordAuditEvent({
-				action: "connection.verification_failed",
-				metadata: { code: error.code },
-				resourceId: instanceId,
-				resourceType: "connection",
-				result: "degraded",
-				userId,
-			});
-		}
-		throw error;
-	}
+	let baseUrl = parseHttpUrl(instance.baseUrl);
 	const secrets = await readConnectionSecrets(userId, instanceId);
 	if (template?.mcp) {
 		const configuredMcpUrl = configString(instance.config, "mcp_server_url");
-		if (configuredMcpUrl)
-			baseUrl = await validateConfiguredUpstreamUrl(configuredMcpUrl);
+		if (configuredMcpUrl) baseUrl = parseHttpUrl(configuredMcpUrl);
 	}
 	if (template?.capabilities.connect && !secrets.get("access_token")) {
 		throw new GatewayError(
@@ -166,24 +144,7 @@ export async function verifyConnection(
 		if (error instanceof GatewayError) throw error;
 		throw new GatewayError(400, "INVALID_TEST_URL", "The test URL is invalid.");
 	}
-	try {
-		target = await validateConfiguredUpstreamUrl(target.toString());
-	} catch (error) {
-		if (
-			error instanceof GatewayError &&
-			error.code === "PRIVATE_UPSTREAM_BLOCKED"
-		) {
-			recordAuditEvent({
-				action: "connection.verification_failed",
-				metadata: { code: error.code },
-				resourceId: instanceId,
-				resourceType: "connection",
-				result: "degraded",
-				userId,
-			});
-		}
-		throw error;
-	}
+	target = parseHttpUrl(target.toString());
 	const headers = new Headers({ accept: "application/json" });
 	injectConnectionCredentials(
 		headers,
@@ -212,7 +173,7 @@ export async function verifyConnection(
 	applyCustomHeaders(headers, secrets);
 	let response: Response | undefined;
 	try {
-		response = await fetchConfiguredUpstream(target, {
+		response = await fetchUpstream(target, {
 			body: method === "POST" ? testBody : undefined,
 			headers,
 			method,

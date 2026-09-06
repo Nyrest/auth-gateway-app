@@ -50,11 +50,7 @@
 	"proxy_api_description": "使用代理 API 密钥访问已配置的提供商池。管理操作仍在仪表盘中进行。",
 	"streaming_endpoint": "流式端点",
 	"streaming_description": "将生成的 API 密钥作为 Bearer 令牌发送。网关会转发合格请求并保留上游响应流。"
-	,"settings_description": "管理系统级安全策略和账户设置。"
-	,"network_policy_title": "上游网络策略"
-	,"network_policy_description": "此系统级策略控制连接是否可以访问私有网络地址。localhost 和 127.0.0.1 始终允许。"
-	,"allow_private_upstreams": "允许私有上游"
-	,"allow_private_upstreams_description": "仅在部署确实需要访问其他内部上游服务时启用。"
+	,"settings_description": "管理账户和 OAuth 设置。"
 	,"settings_update_failed": "无法更新系统设置。"
 	,"public_origin_settings": "公开源站"
 	,"public_origin_settings_description": "用于 OAuth 回调的外部可访问源站地址。"
@@ -422,7 +418,6 @@
 	,"sort_status": "状态"
 	,"details": "项详情"
 	,"edit": "编辑"
-	,"policy_blocked": "被系统策略阻断"
 	,"playground": "调试台"
 	,"method": "方法"
 	,"request": "请求"

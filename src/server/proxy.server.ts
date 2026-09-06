@@ -14,12 +14,9 @@ import { readConnectionSecrets } from "#/features/connections/secrets.server";
 import { applyCustomHeaders } from "./custom-headers.server";
 import { GatewayError } from "./errors";
 import { evaluateExpression } from "./expression.server";
-import { fetchConfiguredUpstream } from "./outbound-request.server";
+import { fetchUpstream } from "./outbound-request.server";
 import { getRequestRuntime } from "./request-runtime.server";
-import {
-	appendUpstreamPath,
-	validateConfiguredUpstreamUrl,
-} from "./upstream-url.server";
+import { appendUpstreamPath, parseHttpUrl } from "./url.server";
 
 export { applyCustomHeaders } from "./custom-headers.server";
 
@@ -513,11 +510,7 @@ async function proxyWithInstance(
 		: instance.baseUrl;
 	const target = applyProviderPolicy(
 		outboundHeaders,
-		appendUpstreamPath(
-			await validateConfiguredUpstreamUrl(mcpUrl),
-			path,
-			new URL(request.url).search,
-		),
+		appendUpstreamPath(parseHttpUrl(mcpUrl), path, new URL(request.url).search),
 		instance.templateSlug,
 		secrets,
 	);
@@ -537,7 +530,7 @@ async function proxyWithInstance(
 	}
 	let upstream: Response;
 	try {
-		upstream = await fetchConfiguredUpstream(target, {
+		upstream = await fetchUpstream(target, {
 			body,
 			headers: outboundHeaders,
 			method: request.method,

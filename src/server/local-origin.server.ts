@@ -1,7 +1,4 @@
-/**
- * Explicit development-loopback exception. Other private addresses remain
- * subject to the deployment-wide private-network policy.
- */
+/** Recognize loopback hosts for local public-origin handling. */
 export function isAlwaysAllowedLoopbackHost(hostname: string): boolean {
 	const normalized = hostname
 		.toLowerCase()
