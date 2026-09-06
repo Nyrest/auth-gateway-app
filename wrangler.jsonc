@@ -4,6 +4,10 @@
   "compatibility_date": "2026-08-30",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/runtime/cloudflare/worker.ts",
+  "hyperdrive": [{
+    "binding": "HYPERDRIVE",
+    "id": "78695d21e1d542cca0ae9c8a2a95237e"
+  }],
   "triggers": {
     "crons": ["*/10 * * * *"]
   }
