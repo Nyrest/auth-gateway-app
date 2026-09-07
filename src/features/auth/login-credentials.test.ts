@@ -5,7 +5,7 @@ import { loginCredentialFields } from "./login-credentials";
 describe("login credential fields", () => {
 	test("uses the standard username and current-password autocomplete tokens", () => {
 		expect(loginCredentialFields).toEqual({
-			email: { autoComplete: "username", name: "username" },
+			email: { autoComplete: "username webauthn", name: "username" },
 			password: { autoComplete: "current-password", name: "password" },
 		});
 	});

@@ -19,6 +19,7 @@ import {
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
 import { changePassword } from "#/features/auth/auth.functions";
+import { authClient } from "#/features/auth/auth-client";
 import { updateSystemSettingsForUser } from "#/features/settings/settings.functions";
 import { systemSettingsQueryOptions } from "#/lib/api";
 import { m } from "#/paraglide/messages.js";
@@ -35,6 +36,12 @@ function SettingsPage() {
 	const settings = settingsQuery.data;
 	const updateSystemSettings = useServerFn(updateSystemSettingsForUser);
 	const changePasswordRequest = useServerFn(changePassword);
+	const passkeysQuery = authClient.useListPasskeys();
+	const [passkeyName, setPasskeyName] = useState("");
+	const [passkeyMessage, setPasskeyMessage] = useState<string>();
+	const [passkeyError, setPasskeyError] = useState(false);
+	const [registeringPasskey, setRegisteringPasskey] = useState(false);
+	const [deletingPasskeyId, setDeletingPasskeyId] = useState<string>();
 	const [publicOrigin, setPublicOrigin] = useState(settings.publicOrigin ?? "");
 	const settingsMutation = useMutation({
 		mutationFn: updateSystemSettings,
@@ -80,6 +87,52 @@ function SettingsPage() {
 		}
 	}
 
+	async function registerPasskey(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		setPasskeyMessage(undefined);
+		setPasskeyError(false);
+		setRegisteringPasskey(true);
+		try {
+			const result = await authClient.passkey.addPasskey({
+				name: passkeyName.trim() || undefined,
+			});
+			if (result.error) {
+				setPasskeyError(true);
+				setPasskeyMessage(m.passkey_registration_failed());
+				return;
+			}
+			setPasskeyName("");
+			setPasskeyMessage(m.passkey_registered());
+			await passkeysQuery.refetch();
+		} catch {
+			setPasskeyError(true);
+			setPasskeyMessage(m.passkey_registration_failed());
+		} finally {
+			setRegisteringPasskey(false);
+		}
+	}
+
+	async function deletePasskey(id: string) {
+		setPasskeyMessage(undefined);
+		setPasskeyError(false);
+		setDeletingPasskeyId(id);
+		try {
+			const result = await authClient.passkey.deletePasskey({ id });
+			if (result.error) {
+				setPasskeyError(true);
+				setPasskeyMessage(m.passkey_delete_failed());
+				return;
+			}
+			setPasskeyMessage(m.passkey_deleted());
+			await passkeysQuery.refetch();
+		} catch {
+			setPasskeyError(true);
+			setPasskeyMessage(m.passkey_delete_failed());
+		} finally {
+			setDeletingPasskeyId(undefined);
+		}
+	}
+
 	return (
 		<>
 			<PageHeader description={m.settings_description()} title={m.settings()} />
@@ -120,6 +173,76 @@ function SettingsPage() {
 								{m.settings_update_failed()}
 							</p>
 						) : null}
+					</CardContent>
+				</Card>
+				<Card className="min-w-0">
+					<CardHeader>
+						<CardTitle>{m.passkeys()}</CardTitle>
+						<CardDescription>{m.passkeys_description()}</CardDescription>
+					</CardHeader>
+					<CardContent className="grid gap-4">
+						<form className="grid gap-3" onSubmit={registerPasskey}>
+							<div className="grid gap-2">
+								<Label htmlFor="passkey-name">{m.passkey_name()}</Label>
+								<Input
+									id="passkey-name"
+									onChange={(event) => setPasskeyName(event.target.value)}
+									placeholder={m.passkey_name_placeholder()}
+									value={passkeyName}
+								/>
+							</div>
+							<div className="flex justify-end">
+								<Button disabled={registeringPasskey} type="submit">
+									{registeringPasskey
+										? m.registering_passkey()
+										: m.register_passkey()}
+								</Button>
+							</div>
+						</form>
+						{passkeyMessage ? (
+							<p
+								className={
+									passkeyError
+										? "text-sm text-destructive"
+										: "text-sm text-muted-foreground"
+								}
+								role={passkeyError ? "alert" : undefined}
+							>
+								{passkeyMessage}
+							</p>
+						) : null}
+						{passkeysQuery.isPending ? (
+							<p className="text-sm text-muted-foreground">{m.loading()}</p>
+						) : passkeysQuery.error ? (
+							<p className="text-sm text-destructive" role="alert">
+								{m.passkeys_load_failed()}
+							</p>
+						) : passkeysQuery.data?.length ? (
+							<ul className="grid gap-2">
+								{passkeysQuery.data.map((passkey) => (
+									<li
+										className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
+										key={passkey.id}
+									>
+										<span className="min-w-0 truncate text-sm">
+											{passkey.name || m.passkey_default_name()}
+										</span>
+										<Button
+											disabled={deletingPasskeyId === passkey.id}
+											onClick={() => void deletePasskey(passkey.id)}
+											size="sm"
+											variant="destructive"
+										>
+											{deletingPasskeyId === passkey.id
+												? m.deleting()
+												: m.delete()}
+										</Button>
+									</li>
+								))}
+							</ul>
+						) : (
+							<p className="text-sm text-muted-foreground">{m.no_passkeys()}</p>
+						)}
 					</CardContent>
 				</Card>
 				<Card className="min-w-0">

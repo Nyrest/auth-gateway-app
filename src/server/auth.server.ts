@@ -1,3 +1,4 @@
+import { passkey } from "@better-auth/passkey";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { betterAuth } from "better-auth/minimal";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
@@ -72,7 +73,7 @@ export async function getAuth(
 				},
 			},
 		},
-		plugins: [tanstackStartCookies()],
+		plugins: [tanstackStartCookies(), passkey({ rpName: "Auth Gateway" })],
 	});
 }
 

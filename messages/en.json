@@ -32,6 +32,8 @@
 	"setup_already_claimed": "This installation has already been claimed.",
 	"invalid_email_or_password": "Invalid email or password.",
 	"sign_in_failed": "Sign-in could not be completed.",
+	"sign_in_with_passkey": "Sign in with Passkey",
+	"passkey_sign_in_failed": "Passkey sign-in could not be completed.",
 	"setup_failed": "Setup could not be completed.",
 	"overview": "Overview",
 	"overview_description": "A security-focused control plane for managed upstream credentials and streaming API access.",
@@ -66,6 +68,20 @@
 	,"current_password": "Current password"
 	,"new_password": "New password"
 	,"update_password": "Update password"
+	,"passkeys": "Passkeys"
+	,"passkeys_description": "Register a device or security key for passwordless sign-in."
+	,"passkey_name": "Passkey name"
+	,"passkey_name_placeholder": "This device"
+	,"register_passkey": "Register Passkey"
+	,"registering_passkey": "Registering…"
+	,"passkey_registered": "Passkey registered."
+	,"passkey_registration_failed": "The passkey could not be registered."
+	,"passkey_deleted": "Passkey deleted."
+	,"passkey_delete_failed": "The passkey could not be deleted."
+	,"passkeys_load_failed": "Passkeys could not be loaded."
+	,"no_passkeys": "No passkeys registered yet."
+	,"passkey_default_name": "Unnamed passkey"
+	,"or_continue_with": "or continue with"
 	,"api_keys_description": "Create and manage scoped credentials for gateway clients."
 	,"new_api_key": "New API key"
 	,"create_api_key": "Create API key"

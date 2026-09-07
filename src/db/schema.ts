@@ -14,6 +14,7 @@ import {
 
 import {
 	authAccounts,
+	authPasskeys,
 	authRateLimits,
 	authSessions,
 	authUsers,
@@ -22,6 +23,7 @@ import {
 
 export {
 	authAccounts,
+	authPasskeys,
 	authRateLimits,
 	authSessions,
 	authUsers,
@@ -291,6 +293,7 @@ export const gatewaySchema = {
 	auditEvents,
 	apiKeys,
 	account: authAccounts,
+	passkey: authPasskeys,
 	oauthStates,
 	providerInstances,
 	providerSecrets,

@@ -36,6 +36,23 @@ function LoginPage() {
 	const [error, setError] = useState<string>();
 	const [submitting, setSubmitting] = useState(false);
 
+	async function signInWithPasskey() {
+		setSubmitting(true);
+		setError(undefined);
+		try {
+			const result = await authClient.signIn.passkey();
+			if (result.error) {
+				setError(m.passkey_sign_in_failed());
+				return;
+			}
+			await navigate({ to: "/" });
+		} catch {
+			setError(m.passkey_sign_in_failed());
+		} finally {
+			setSubmitting(false);
+		}
+	}
+
 	async function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		setSubmitting(true);
@@ -105,6 +122,19 @@ function LoginPage() {
 							) : null}
 							<Button disabled={submitting} type="submit">
 								{submitting ? m.signing_in() : m.sign_in()}
+							</Button>
+							<div className="relative py-1 text-center text-xs text-muted-foreground before:absolute before:inset-x-0 before:top-1/2 before:border-t before:border-border">
+								<span className="relative bg-card px-2">
+									{m.or_continue_with()}
+								</span>
+							</div>
+							<Button
+								disabled={submitting}
+								onClick={() => void signInWithPasskey()}
+								type="button"
+								variant="outline"
+							>
+								{m.sign_in_with_passkey()}
 							</Button>
 						</form>
 					</CardContent>

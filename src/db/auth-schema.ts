@@ -90,3 +90,26 @@ export const authRateLimits = pgTable(
 	},
 	(table) => [uniqueIndex("rate_limit_key_idx").on(table.key)],
 );
+
+export const authPasskeys = pgTable(
+	"passkey",
+	{
+		id: uuid("id").primaryKey(),
+		name: text("name"),
+		publicKey: text("public_key").notNull(),
+		userId: uuid("user_id")
+			.notNull()
+			.references(() => authUsers.id, { onDelete: "cascade" }),
+		credentialID: text("credential_id").notNull(),
+		counter: integer("counter").notNull(),
+		deviceType: text("device_type").notNull(),
+		backedUp: boolean("backed_up").notNull(),
+		transports: text("transports"),
+		createdAt: timestamp("created_at", { withTimezone: true }),
+		aaguid: text("aaguid"),
+	},
+	(table) => [
+		index("passkey_user_id_idx").on(table.userId),
+		uniqueIndex("passkey_credential_id_idx").on(table.credentialID),
+	],
+);
