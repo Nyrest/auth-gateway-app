@@ -189,32 +189,28 @@ export async function verifyConnection(
 	);
 	const now = new Date();
 	const interval = instance.healthIntervalMinutes ?? 60;
-	await db.transaction(async (tx) => {
-		const [updated] = await tx
-			.update(providerInstances)
-			.set({
-				health: ok ? "healthy" : "unhealthy",
-				healthDueAt: new Date(now.getTime() + interval * 60_000),
-				healthFailureCount: ok ? 0 : instance.healthFailureCount + 1,
-				status: ok
-					? "active"
-					: instance.status === "connecting"
-						? "invalid"
-						: instance.status,
-				updatedAt: now,
-			})
-			.where(
-				and(
-					eq(providerInstances.id, instanceId),
-					eq(providerInstances.userId, userId),
-					...(expectedHealthLeaseUntil
-						? [eq(providerInstances.healthLeaseUntil, expectedHealthLeaseUntil)]
-						: []),
-				),
-			)
-			.returning({ id: providerInstances.id });
-		if (!updated) return;
-	});
+	await db
+		.update(providerInstances)
+		.set({
+			health: ok ? "healthy" : "unhealthy",
+			healthDueAt: new Date(now.getTime() + interval * 60_000),
+			healthFailureCount: ok ? 0 : instance.healthFailureCount + 1,
+			status: ok
+				? "active"
+				: instance.status === "connecting"
+					? "invalid"
+					: instance.status,
+			updatedAt: now,
+		})
+		.where(
+			and(
+				eq(providerInstances.id, instanceId),
+				eq(providerInstances.userId, userId),
+				...(expectedHealthLeaseUntil
+					? [eq(providerInstances.healthLeaseUntil, expectedHealthLeaseUntil)]
+					: []),
+			),
+		);
 	recordAuditEvent({
 		action: ok ? "connection.verified" : "connection.verification_failed",
 		metadata: { statusCode: response?.status ?? null },

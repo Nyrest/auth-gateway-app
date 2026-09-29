@@ -8,7 +8,7 @@
     },
     "deployments-cron": {
       "sources_sha": {
-        "skills/deployments-cron/README.md": "7e8cc8a6015dd8e8b4729eaacab70c78786b81dde8091c0773efa5b9edd0f8d7"
+		"skills/deployments-cron/README.md": "1ef4aee60b9679592ea22b585c2392e669c24ab40d6b12eded5041d34cda672f"
       }
     },
     "proxy-streaming": {

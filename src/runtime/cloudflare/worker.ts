@@ -1,5 +1,6 @@
+import type { D1Database } from "@cloudflare/workers-types";
 import application from "@tanstack/react-start/server-entry";
-import { createHyperdriveDatabase } from "#/db/index.server";
+import { createDatabase } from "#/db/index.server";
 import type { RuntimeServices } from "#/runtime/contract.server";
 import { decodeRootSecret } from "#/runtime/secret.server";
 import { runScheduledMaintenance } from "#/server/scheduler.server";
@@ -7,26 +8,20 @@ import { handleApplicationRequest } from "#/server-runtime.server";
 
 type Bindings = {
 	readonly AUTH_GATEWAY_SECRET: string;
-	readonly DATABASE_URL?: string;
-	readonly HYPERDRIVE?: { readonly connectionString: string };
+	readonly DB: D1Database;
 };
 
 type ExecutionContext = {
 	waitUntil(promise: Promise<unknown>): void;
 };
 
-async function createServices(bindings: Bindings): Promise<RuntimeServices> {
-	const connectionString =
-		bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
-	if (!connectionString) {
-		throw new Error(
-			"Configure either a HYPERDRIVE binding or a DATABASE_URL secret.",
-		);
+function createServices(bindings: Bindings): RuntimeServices {
+	if (!bindings.DB) {
+		throw new Error("A D1 binding named DB is required.");
 	}
 
 	return {
-		database: await createHyperdriveDatabase(connectionString),
-		kind: "cloudflare",
+		database: createDatabase(bindings.DB),
 		rootSecret: decodeRootSecret(bindings.AUTH_GATEWAY_SECRET),
 	};
 }
@@ -37,19 +32,22 @@ export default {
 		bindings: Bindings,
 		context: ExecutionContext,
 	): Promise<Response> {
-		const services = await createServices(bindings);
-
-		return handleApplicationRequest(application, request, services, {
-			clientIp: request.headers.get("cf-connecting-ip"),
-			deferPromise: (promise) => context.waitUntil(promise),
-		});
+		return handleApplicationRequest(
+			application,
+			request,
+			createServices(bindings),
+			{
+				clientIp: request.headers.get("cf-connecting-ip"),
+				deferPromise: (promise) => context.waitUntil(promise),
+			},
+		);
 	},
 	async scheduled(
 		_controller: unknown,
 		bindings: Bindings,
 		context: ExecutionContext,
 	): Promise<void> {
-		const services = await createServices(bindings);
+		const services = createServices(bindings);
 
 		context.waitUntil(
 			runScheduledMaintenance(services, new Date(), (promise) =>

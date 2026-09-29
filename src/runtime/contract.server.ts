@@ -1,7 +1,5 @@
 import type { GatewayDatabase } from "#/db/index.server";
 
-export type RuntimeKind = "bun" | "cloudflare";
-
 export type BackgroundTask = () => Promise<void>;
 
 export type DeferredWork = {
@@ -11,7 +9,6 @@ export type DeferredWork = {
 
 export type RuntimeServices = {
 	readonly database: GatewayDatabase;
-	readonly kind: RuntimeKind;
 	readonly rootSecret: Uint8Array;
 };
 

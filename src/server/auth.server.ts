@@ -31,7 +31,7 @@ export async function getAuth(
 		baseURL: publicOrigin ? createAuthBaseUrl(publicOrigin) : undefined,
 		secret: getBetterAuthSecret(),
 		database: drizzleAdapter(db, {
-			provider: "pg",
+			provider: "sqlite",
 			schema: gatewaySchema,
 		}),
 		emailAndPassword: {

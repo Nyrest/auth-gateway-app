@@ -1,0 +1,3 @@
+# Generate with: bun src/scripts/generate-secret.ts
+# Cloudflare's deploy flow asks for this secret and never stores it in source.
+AUTH_GATEWAY_SECRET=

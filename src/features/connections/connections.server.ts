@@ -1,12 +1,13 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 
-import { type GatewayDatabase, getDb } from "#/db/index.server";
+import { getDb } from "#/db/index.server";
 import {
 	providerInstances,
 	providerSecrets,
 	requestMetrics,
 } from "#/db/schema";
+import { filteredIntegerCount, integerCount } from "#/db/sql.server";
 import {
 	maximumCustomHeadersBytes,
 	parseStoredHeaders,
@@ -386,30 +387,35 @@ export async function getConnectionDetails(
 ): Promise<ConnectionDetailsView> {
 	const connection = await getConnection(userId, id);
 	const from = new Date(Date.now() - 24 * 60 * 60_000);
+	const metricFilter = and(
+		eq(requestMetrics.userId, userId),
+		eq(requestMetrics.instanceId, id),
+		gte(requestMetrics.occurredAt, from),
+	);
 	const [metrics] = await getDb()
 		.select({
-			requests: sql<number>`count(*)::int`,
-			failures: sql<number>`count(*) filter (where ${requestMetrics.statusCode} >= 400)::int`,
-			// PostgreSQL's percentile_cont returns double precision; round() only
-			// accepts numeric, so cast before rounding to keep the detail query valid.
-			p95LatencyMs: sql<number>`coalesce(round((percentile_cont(0.95) within group (order by ${requestMetrics.latencyMs}))::numeric), 0)::int`,
+			requests: integerCount(),
+			failures: filteredIntegerCount(gte(requestMetrics.statusCode, 400)),
 		})
 		.from(requestMetrics)
-		.where(
-			and(
-				eq(requestMetrics.userId, userId),
-				eq(requestMetrics.instanceId, id),
-				gte(requestMetrics.occurredAt, from),
-			),
-		);
+		.where(metricFilter);
 	const requests = Number(metrics?.requests ?? 0);
 	const failures = Number(metrics?.failures ?? 0);
+	const [p95] = requests
+		? await getDb()
+				.select({ latencyMs: requestMetrics.latencyMs })
+				.from(requestMetrics)
+				.where(metricFilter)
+				.orderBy(asc(requestMetrics.latencyMs))
+				.limit(1)
+				.offset(Math.max(0, Math.ceil(requests * 0.95) - 1))
+		: [];
 	return {
 		...connection,
 		metrics24h: {
 			requests,
 			successRate: requests > 0 ? (requests - failures) / requests : 1,
-			p95LatencyMs: Number(metrics?.p95LatencyMs ?? 0),
+			p95LatencyMs: Number(p95?.latencyMs ?? 0),
 		},
 	};
 }
@@ -464,29 +470,32 @@ export async function createConnection(
 	);
 
 	const db = getDb();
-	const [instance] = await db.transaction(async (tx) => {
-		const inserted = await tx
-			.insert(providerInstances)
-			.values({
-				id,
-				userId,
-				templateSlug: template.slug,
-				instanceSlug,
-				providerSlug,
-				name,
-				baseUrl,
-				config,
-				healthIntervalMinutes: data.healthIntervalMinutes ?? null,
-				healthDueAt,
-				createdAt: now,
-				updatedAt: now,
-			})
-			.returning();
-		if (secretRows.length > 0) {
-			await tx.insert(providerSecrets).values(secretRows);
-		}
-		return inserted;
-	});
+	const insertConnection = db
+		.insert(providerInstances)
+		.values({
+			id,
+			userId,
+			templateSlug: template.slug,
+			instanceSlug,
+			providerSlug,
+			name,
+			baseUrl,
+			config,
+			healthIntervalMinutes: data.healthIntervalMinutes ?? null,
+			healthDueAt,
+			createdAt: now,
+			updatedAt: now,
+		})
+		.returning();
+	const [instance] =
+		secretRows.length > 0
+			? (
+					await db.batch([
+						insertConnection,
+						db.insert(providerSecrets).values(secretRows),
+					])
+				)[0]
+			: await insertConnection;
 
 	if (!instance) {
 		throw new GatewayError(
@@ -614,51 +623,43 @@ export async function updateConnection(
 				value.trim().length > 0 && secretFieldKeys.has(fieldKey),
 		),
 	);
-	const [updated] = await db.transaction(async (tx) => {
-		const [connection] = await tx
-			.update(providerInstances)
-			.set({
-				name,
-				providerSlug,
-				baseUrl,
-				config,
-				healthIntervalMinutes: interval,
-				healthDueAt:
-					interval == null
-						? existing.healthDueAt
-						: new Date(now.getTime() + interval * 60_000),
-				updatedAt: now,
-			})
-			.where(
-				and(eq(providerInstances.id, id), eq(providerInstances.userId, userId)),
-			)
-			.returning();
-		if (!connection) {
-			throw new GatewayError(
-				500,
-				"CONNECTION_UPDATE_FAILED",
-				"The connection could not be updated.",
-			);
-		}
-		if (clear.length > 0) {
-			await tx
-				.delete(providerSecrets)
-				.where(
-					and(
-						eq(providerSecrets.instanceId, id),
-						eq(providerSecrets.userId, userId),
-						inArray(providerSecrets.fieldKey, [...clear]),
-					),
-				);
-		}
-		await saveConnectionSecrets(
-			userId,
-			id,
-			persistedSecretUpdates,
-			tx as GatewayDatabase,
+	const [updated] = await db
+		.update(providerInstances)
+		.set({
+			name,
+			providerSlug,
+			baseUrl,
+			config,
+			healthIntervalMinutes: interval,
+			healthDueAt:
+				interval == null
+					? existing.healthDueAt
+					: new Date(now.getTime() + interval * 60_000),
+			updatedAt: now,
+		})
+		.where(
+			and(eq(providerInstances.id, id), eq(providerInstances.userId, userId)),
+		)
+		.returning();
+	if (!updated) {
+		throw new GatewayError(
+			500,
+			"CONNECTION_UPDATE_FAILED",
+			"The connection could not be updated.",
 		);
-		return [connection];
-	});
+	}
+	if (clear.length > 0) {
+		await db
+			.delete(providerSecrets)
+			.where(
+				and(
+					eq(providerSecrets.instanceId, id),
+					eq(providerSecrets.userId, userId),
+					inArray(providerSecrets.fieldKey, [...clear]),
+				),
+			);
+	}
+	await saveConnectionSecrets(userId, id, persistedSecretUpdates, db);
 	recordAuditEvent({
 		action: "connection.updated",
 		metadata: { providerSlug },

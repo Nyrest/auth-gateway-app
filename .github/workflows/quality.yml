@@ -21,9 +21,8 @@ jobs:
       - run: bun run typecheck
       - run: bun run check:runtime-boundaries
       - run: bun test
-      - run: bun run build:cloudflare
-      - run: bun run build:docker
-      - run: bun run build:cloudflare && bun run wrangler -- deploy --dry-run
+      - run: bun run build
+      - run: bun run wrangler -- deploy --dry-run
       - run: bun run db:generate
       - run: bun run check
         working-directory: packages/agent-skills

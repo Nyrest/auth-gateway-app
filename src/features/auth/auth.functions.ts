@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { and, eq, isNull } from "drizzle-orm";
-import { type GatewayDatabase, getDb } from "#/db/index.server";
-import { appSettings, userSettings } from "#/db/schema";
+import { getDb } from "#/db/index.server";
+import { appSettings, authUsers, userSettings } from "#/db/schema";
 import {
 	changePasswordSchema,
 	setupSchema,
@@ -58,52 +58,64 @@ export const completeSetup = createServerFn({ method: "POST" })
 		const db = getDb();
 		const publicOrigin = normalizeOrigin(data.publicOrigin);
 
-		return db.transaction(async (tx) => {
-			const [settings] = await tx
-				.select({ ownerUserId: appSettings.ownerUserId })
-				.from(appSettings)
-				.where(eq(appSettings.id, "primary"))
-				.for("update");
+		const [settings] = await db
+			.select({ ownerUserId: appSettings.ownerUserId })
+			.from(appSettings)
+			.where(eq(appSettings.id, "primary"));
 
-			if (!settings || settings.ownerUserId) {
+		if (!settings || settings.ownerUserId) {
+			throw new GatewayError(
+				409,
+				"SETUP_ALREADY_CLAIMED",
+				"This installation has already been claimed.",
+			);
+		}
+
+		const response = await (await getAuth(publicOrigin, db)).api.signUpEmail({
+			body: { email: data.email, name: data.name, password: data.password },
+			headers: getRequest().headers,
+		});
+
+		try {
+			const [claims] = await db.batch([
+				db
+					.update(appSettings)
+					.set({
+						ownerUserId: response.user.id,
+						publicOrigin,
+						updatedAt: new Date(),
+					})
+					.where(
+						and(eq(appSettings.id, "primary"), isNull(appSettings.ownerUserId)),
+					)
+					.returning({ ownerUserId: appSettings.ownerUserId }),
+				db
+					.insert(userSettings)
+					.values({ userId: response.user.id })
+					.onConflictDoNothing(),
+			]);
+
+			if (!claims[0]) {
 				throw new GatewayError(
 					409,
 					"SETUP_ALREADY_CLAIMED",
 					"This installation has already been claimed.",
 				);
 			}
+		} catch (error) {
+			// Better Auth creates the user before the D1 claim batch. Removing a
+			// failed claimant cascades its auth records and releases owner_user_id.
+			await db.delete(authUsers).where(eq(authUsers.id, response.user.id));
+			throw error;
+		}
 
-			// Better Auth writes through this same transaction, so a failed setup
-			// cannot leave behind an account that was never made the owner.
-			const response = await (
-				await getAuth(publicOrigin, tx as GatewayDatabase)
-			).api.signUpEmail({
-				body: { email: data.email, name: data.name, password: data.password },
-			});
-
-			await tx
-				.update(appSettings)
-				.set({
-					ownerUserId: response.user.id,
-					publicOrigin,
-					updatedAt: new Date(),
-				})
-				.where(
-					and(eq(appSettings.id, "primary"), isNull(appSettings.ownerUserId)),
-				);
-			await tx
-				.insert(userSettings)
-				.values({ userId: response.user.id })
-				.onConflictDoNothing();
-
-			return {
-				user: {
-					email: response.user.email,
-					id: response.user.id,
-					name: response.user.name,
-				},
-			};
-		});
+		return {
+			user: {
+				email: response.user.email,
+				id: response.user.id,
+				name: response.user.name,
+			},
+		};
 	});
 
 export const getCurrentSession = createServerFn({ method: "GET" }).handler(

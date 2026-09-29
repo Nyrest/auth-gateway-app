@@ -5,9 +5,9 @@ import {
 	desc,
 	eq,
 	gt,
-	ilike,
 	isNotNull,
 	isNull,
+	lte,
 	or,
 	sql,
 } from "drizzle-orm";
@@ -15,6 +15,7 @@ import { uuidv7 } from "uuidv7";
 
 import { getDb } from "#/db/index.server";
 import { apiKeys, providerInstances } from "#/db/schema";
+import { caseInsensitiveLike } from "#/db/sql.server";
 import { recordAuditEvent } from "#/server/audit.server";
 import { sha256 } from "#/server/config.server";
 import { createApiKeySecret } from "#/server/crypto.server";
@@ -64,8 +65,9 @@ function toView(key: typeof apiKeys.$inferSelect): ApiKeyView {
 	};
 }
 
-function statusExpression() {
-	return sql<string>`case when ${apiKeys.revokedAt} is not null then 'revoked' when ${apiKeys.expiresAt} is not null and ${apiKeys.expiresAt} <= now() then 'expired' else 'active' end`;
+function statusExpression(now: Date) {
+	const encodedNow = apiKeys.expiresAt.mapToDriverValue(now);
+	return sql<string>`case when ${apiKeys.revokedAt} is not null then 'revoked' when ${apiKeys.expiresAt} is not null and ${apiKeys.expiresAt} <= ${encodedNow} then 'expired' else 'active' end`;
 }
 
 function normalizeListInput(input: ApiKeysQueryInput = {}) {
@@ -92,9 +94,9 @@ export async function listApiKeys(
 	if (normalized.search) {
 		const pattern = `%${normalized.search.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
 		const searchFilter = or(
-			ilike(apiKeys.label, pattern),
-			ilike(apiKeys.prefix, pattern),
-			sql`cast(${apiKeys.providerSlugs} as text) ilike ${pattern}`,
+			caseInsensitiveLike(apiKeys.label, pattern),
+			caseInsensitiveLike(apiKeys.prefix, pattern),
+			caseInsensitiveLike(apiKeys.providerSlugs, pattern),
 		);
 		if (searchFilter) filters.push(searchFilter);
 	}
@@ -104,7 +106,7 @@ export async function listApiKeys(
 		filters.push(
 			isNull(apiKeys.revokedAt),
 			isNotNull(apiKeys.expiresAt),
-			sql`${apiKeys.expiresAt} <= now()`,
+			lte(apiKeys.expiresAt, new Date()),
 		);
 	}
 	if (normalized.status === "active") {
@@ -122,16 +124,27 @@ export async function listApiKeys(
 			: normalized.sort === "expiresAt"
 				? apiKeys.expiresAt
 				: normalized.sort === "status"
-					? statusExpression()
+					? statusExpression(new Date())
 					: apiKeys.prefix;
 	const orderBy =
 		normalized.sort === "expiresAt"
-			? normalized.direction === "desc"
-				? desc(sql`coalesce(${orderColumn}, 'infinity'::timestamptz)`)
-				: asc(sql`coalesce(${orderColumn}, 'infinity'::timestamptz)`)
-			: normalized.direction === "desc"
-				? desc(orderColumn)
-				: asc(orderColumn);
+			? [
+					normalized.direction === "desc"
+						? desc(
+								sql`case when ${apiKeys.expiresAt} is null then 1 else 0 end`,
+							)
+						: asc(
+								sql`case when ${apiKeys.expiresAt} is null then 1 else 0 end`,
+							),
+					normalized.direction === "desc"
+						? desc(apiKeys.expiresAt)
+						: asc(apiKeys.expiresAt),
+				]
+			: [
+					normalized.direction === "desc"
+						? desc(orderColumn)
+						: asc(orderColumn),
+				];
 	const [{ total }] = await db
 		.select({ total: count() })
 		.from(apiKeys)
@@ -140,7 +153,7 @@ export async function listApiKeys(
 		.select()
 		.from(apiKeys)
 		.where(where)
-		.orderBy(orderBy, desc(apiKeys.createdAt))
+		.orderBy(...orderBy, desc(apiKeys.createdAt))
 		.limit(normalized.pageSize)
 		.offset(normalized.page * normalized.pageSize);
 	const totalCount = Number(total ?? 0);

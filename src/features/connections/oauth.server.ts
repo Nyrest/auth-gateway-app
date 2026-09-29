@@ -317,55 +317,53 @@ async function persistToken(input: {
 			})),
 	);
 	try {
-		const [updated] = await getDb().transaction(async (tx) => {
-			const where = and(
-				eq(providerInstances.id, input.instanceId),
-				eq(providerInstances.userId, input.userId),
-				...(input.expectedRefreshLeaseUntil
-					? [
-							eq(
-								providerInstances.refreshLeaseUntil,
-								input.expectedRefreshLeaseUntil,
-							),
-						]
-					: []),
-			);
-			if (input.expectedRefreshLeaseUntil) {
-				const [lease] = await tx
-					.select({ id: providerInstances.id })
-					.from(providerInstances)
-					.where(where)
-					.limit(1);
-				if (!lease) throw new LeaseLostError();
-			}
-			for (const row of secretRows) {
-				await tx
-					.insert(providerSecrets)
-					.values(row)
-					.onConflictDoUpdate({
-						target: [providerSecrets.instanceId, providerSecrets.fieldKey],
-						set: {
-							envelope: row.envelope,
-							updatedAt: now,
-						},
-					});
-			}
-			const updated = await tx
-				.update(providerInstances)
-				.set({
-					accessTokenExpiresAt: expiresAt,
-					health: "unknown",
-					refreshDueAt,
-					status: "active",
-					updatedAt: now,
-				})
+		const db = getDb();
+		const where = and(
+			eq(providerInstances.id, input.instanceId),
+			eq(providerInstances.userId, input.userId),
+			...(input.expectedRefreshLeaseUntil
+				? [
+						eq(
+							providerInstances.refreshLeaseUntil,
+							input.expectedRefreshLeaseUntil,
+						),
+					]
+				: []),
+		);
+		if (input.expectedRefreshLeaseUntil) {
+			const [lease] = await db
+				.select({ id: providerInstances.id })
+				.from(providerInstances)
 				.where(where)
-				.returning({ id: providerInstances.id });
-			if (input.expectedRefreshLeaseUntil && !updated[0]) {
-				throw new LeaseLostError();
-			}
-			return updated;
-		});
+				.limit(1);
+			if (!lease) throw new LeaseLostError();
+		}
+		for (const row of secretRows) {
+			await db
+				.insert(providerSecrets)
+				.values(row)
+				.onConflictDoUpdate({
+					target: [providerSecrets.instanceId, providerSecrets.fieldKey],
+					set: {
+						envelope: row.envelope,
+						updatedAt: now,
+					},
+				});
+		}
+		const [updated] = await db
+			.update(providerInstances)
+			.set({
+				accessTokenExpiresAt: expiresAt,
+				health: "unknown",
+				refreshDueAt,
+				status: "active",
+				updatedAt: now,
+			})
+			.where(where)
+			.returning({ id: providerInstances.id });
+		if (input.expectedRefreshLeaseUntil && !updated) {
+			throw new LeaseLostError();
+		}
 		return Boolean(updated);
 	} catch (error) {
 		if (error instanceof LeaseLostError) return false;
@@ -421,8 +419,8 @@ export async function beginOAuthConnection(
 	const state = randomBase64Url();
 	const verifier = createPkceVerifier();
 	const now = new Date();
-	await db.transaction(async (tx) => {
-		await tx.insert(oauthStates).values({
+	await db.batch([
+		db.insert(oauthStates).values({
 			id: uuidv7(),
 			stateDigest: sha256(state),
 			verifierEnvelope: await encryptSecret(
@@ -434,8 +432,8 @@ export async function beginOAuthConnection(
 			expiresAt: new Date(now.getTime() + 10 * 60_000),
 			createdAt: now,
 			updatedAt: now,
-		});
-		await tx
+		}),
+		db
 			.update(providerInstances)
 			.set({ status: "connecting", updatedAt: now })
 			.where(
@@ -443,8 +441,8 @@ export async function beginOAuthConnection(
 					eq(providerInstances.id, instance.id),
 					eq(providerInstances.userId, userId),
 				),
-			);
-	});
+			),
+	]);
 	const authorize = new URL(endpoints.authorizationUrl);
 	authorize.searchParams.set("client_id", clientId);
 	authorize.searchParams.set("redirect_uri", callback);

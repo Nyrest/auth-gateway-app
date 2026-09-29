@@ -1,104 +1,66 @@
 # Auth Gateway
 
-Auth Gateway is a self-hosted gateway for sending requests to upstream providers through one stable endpoint. Configure a provider once, keep its credentials encrypted, and use a generated proxy API key from your applications.
+Auth Gateway is a self-hosted Cloudflare Worker for sending requests to upstream providers through one stable endpoint. Configure a provider once, keep its credentials encrypted, and use a generated proxy API key from your applications.
 
 ## What you can do
 
 - Connect generic HTTP endpoints and predefined providers, including API-key, OAuth/OIDC, and MCP providers.
-- Add optional custom headers to every provider. Headers can be edited visually or as JSON, and values are encrypted with the provider credentials.
-- Use the standalone **Generic HTTP** provider (`generic_headers`) when you need a provider with no predefined template. MCP providers accept custom headers directly.
+- Add optional encrypted custom headers to every provider.
 - Create API keys with provider-level access rules.
 - Test requests in Playground and inspect request metrics from the dashboard.
+- Run scheduled token refresh, health checks, and retention cleanup with a Cloudflare cron trigger.
 
-Custom headers are applied after provider authentication and fixed headers. They may therefore override those values; the UI shows a warning for known conflicts but does not block saving or sending. Supported `{{...}}` expressions in header values are resolved only when a request is sent.
+Auth Gateway runs exclusively on Cloudflare Workers and stores all application data in Cloudflare D1.
 
-Choose one deployment method below.
-
-## Cloudflare Worker
+## Deploy to Cloudflare
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Nyrest/auth-gateway-app)
 
-The button opens Cloudflare's deployment flow for this repository. A PostgreSQL database is required; choose Hyperdrive or a direct PostgreSQL connection below.
+The deployment flow provisions the D1 database bound as `DB`, asks for `AUTH_GATEWAY_SECRET`, applies the migrations in `drizzle`, and deploys the Worker. Generate the secret locally with:
 
-1. Create a PostgreSQL database that your Worker can reach.
-2. Choose a database connection mode:
+```sh
+bun run secret:generate
+```
 
-   **Hyperdrive (recommended)** — creates a pooled connection close to your database. Create a configuration and note its ID:
+After deployment, open the Worker URL, complete first-time setup, and create a proxy API key. The ten-minute Cloudflare cron trigger is included in `wrangler.jsonc`.
 
-   ```sh
-   bunx wrangler hyperdrive create auth-gateway-db --connection-string="postgresql://USER:PASSWORD@HOST:5432/DATABASE"
-   ```
+### Deploy from a local checkout
 
-   Add the binding to `wrangler.jsonc`:
+```sh
+bun install
+bunx wrangler secret put AUTH_GATEWAY_SECRET
+bun run build
+bun run deploy
+```
 
-   ```jsonc
-   "hyperdrive": [{
-     "binding": "HYPERDRIVE",
-     "id": "your-hyperdrive-id"
-   }]
-   ```
+`bun run deploy` applies pending remote D1 migrations before publishing the Worker.
 
-   **Direct PostgreSQL** — store the connection string as a Worker secret. This mode does not need a Hyperdrive binding:
+## Local development
 
-   ```sh
-   bunx wrangler secret put DATABASE_URL
-   ```
-
-3. Add the required secret. Generate one locally with `bun src/scripts/generate-secret.ts`, then copy the single-line result when prompted:
-
-   ```sh
-   bunx wrangler secret put AUTH_GATEWAY_SECRET
-   ```
-
-4. Set `DATABASE_URL` to the direct PostgreSQL connection string on a trusted machine, apply the schema, and deploy:
+1. Copy `.dev.vars.example` to `.dev.vars` and set a generated `AUTH_GATEWAY_SECRET`.
+2. Prepare the local D1 database and start the Cloudflare development runtime:
 
    ```sh
    bun run db:migrate
-   bun run deploy:cloudflare
+   bun run dev
    ```
 
-After deployment, open the Worker URL, complete first-time setup, and create a proxy API key. Cloudflare cron triggers are included automatically.
+3. Open <http://localhost:3000> and complete first-time setup.
 
-## Docker
+Wrangler stores the local D1 data under `.wrangler`, which is ignored by Git. Generate schema migrations with `bun run db:generate`; apply them remotely with `bun run db:migrate:remote`.
 
-Docker Compose starts the application, runs the database migration once, and keeps PostgreSQL data in a named volume.
+## Configuration
 
-1. Copy the example environment file and set `AUTH_GATEWAY_SECRET`:
-
-   ```sh
-   cp .env.example .env
-   bun src/scripts/generate-secret.ts
-   ```
-
-   Paste the generated value into `.env` without quotes or `=` padding.
-
-2. Start the stack:
-
-   ```sh
-   docker compose up --build
-   ```
-
-3. Open <http://localhost:3000>, complete first-time setup, and create a proxy API key.
-
-Stop the stack with `docker compose down`. The database volume is retained. To intentionally remove all local data, use `docker compose down -v`.
-
-The Compose database is private to the stack and persists in a named volume.
-
-## Environment variables
-
-| Variable | Required | Used by | Description |
+| Name | Type | Required | Description |
 | --- | --- | --- | --- |
-| `AUTH_GATEWAY_SECRET` | Yes | Worker and Docker | A stable secret containing exactly 32 random bytes, encoded as unpadded base64url (normally 43 characters). Generate it with `bun src/scripts/generate-secret.ts`. Keep it private and do not change it after storing connections or sessions. |
-| `DATABASE_URL` | No for Hyperdrive or Docker Compose; yes for direct Cloudflare or standalone container | Cloudflare direct mode, Docker runtime, or migration commands | PostgreSQL connection string. Docker Compose supplies its internal value automatically. Cloudflare uses this secret for direct mode and ignores it when `HYPERDRIVE` is configured. |
-| `PORT` | No | Docker | Application port; defaults to `3000`. If you change it, update the Docker port mapping as well. |
-
-`HYPERDRIVE` is an optional Wrangler binding, not a `.env` variable. Configure it in `wrangler.jsonc` for the recommended pooled mode, or set `DATABASE_URL` as a Worker secret for direct mode.
+| `DB` | D1 binding | Yes | The sole application database. It is declared in `wrangler.jsonc` and provisioned automatically by Cloudflare's deployment flow. |
+| `AUTH_GATEWAY_SECRET` | Worker secret | Yes | Exactly 32 random bytes encoded as unpadded base64url, normally 43 characters. It protects sessions and encrypted provider credentials; do not rotate it without a data migration. |
 
 ## First use
 
 1. Open the deployed application and create the initial account.
 2. Go to **Connections → Create Connection**, choose a provider, and enter its endpoint and credentials.
-3. Optionally expand **Custom Headers**. Use Visual mode for rows or JSON mode for an object such as:
+3. Optionally add custom headers in Visual or JSON mode, for example:
 
    ```json
    {
@@ -122,4 +84,4 @@ The Compose database is private to the stack and persists in a named volume.
 - Provider credentials and custom header values are encrypted at rest and are never included in connection list responses.
 - Proxy API keys are scoped to the providers you select and can be revoked from the dashboard.
 - Upstream requests are sent to the HTTP(S) URLs configured on each connection, including internal destinations.
-- If you are upgrading from an early development build, recreate the database before running `bun run db:migrate`; databases created by the retired schema are not supported.
+- Back up production data before applying migrations.

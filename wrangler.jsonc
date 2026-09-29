@@ -4,14 +4,14 @@
   "compatibility_date": "2026-08-30",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/runtime/cloudflare/worker.ts",
-  "hyperdrive": [{
-    "binding": "HYPERDRIVE",
-    "id": "78695d21e1d542cca0ae9c8a2a95237e"
-  }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "auth-gateway-app",
+      "migrations_dir": "drizzle"
+    }
+  ],
   "triggers": {
     "crons": ["*/10 * * * *"]
   }
-  // Choose one database connection mode before deploying:
-  // - add a Hyperdrive binding named HYPERDRIVE, or
-  // - store a direct PostgreSQL URL as the DATABASE_URL secret.
 }

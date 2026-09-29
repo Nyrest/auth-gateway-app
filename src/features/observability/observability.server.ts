@@ -1,12 +1,29 @@
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, or, sql } from "drizzle-orm";
 
 import { getDb } from "#/db/index.server";
 import { auditEvents, providerInstances, requestMetrics } from "#/db/schema";
+import {
+	caseInsensitiveLike,
+	filteredIntegerCount,
+	hourlyBucket,
+	integerAverage,
+	integerCount,
+} from "#/db/sql.server";
 
 export type AuditResult = "success" | "failure" | "invalid" | "degraded";
 export type AuditMetadata = Readonly<
 	Record<string, string | number | boolean | null>
 >;
+
+function orCaseInsensitiveLike(
+	columns: readonly Parameters<typeof caseInsensitiveLike>[0][],
+	pattern: string,
+) {
+	return (
+		or(...columns.map((column) => caseInsensitiveLike(column, pattern))) ??
+		sql`0 = 1`
+	);
+}
 
 export type AuditEventView = {
 	readonly action: string;
@@ -140,14 +157,18 @@ export async function queryAuditEvents(
 	const filters = [eq(auditEvents.userId, userId)];
 	const search = options.search?.trim();
 	if (search) {
+		const pattern = `%${search}%`;
 		filters.push(
-			sql`(${auditEvents.action} ILIKE ${`%${search}%`} OR ${auditEvents.resourceType} ILIKE ${`%${search}%`} OR coalesce(${auditEvents.resourceId}, '') ILIKE ${`%${search}%`})`,
+			orCaseInsensitiveLike(
+				[auditEvents.action, auditEvents.resourceType, auditEvents.resourceId],
+				pattern,
+			),
 		);
 	}
 	if (options.result) filters.push(eq(auditEvents.result, options.result));
 	const where = and(...filters);
 	const [totalRow] = await getDb()
-		.select({ count: sql<number>`count(*)::int` })
+		.select({ count: integerCount() })
 		.from(auditEvents)
 		.where(where);
 	const rows = await getDb()
@@ -182,7 +203,7 @@ export async function listStatisticsFilters(
 	const providersPromise = getDb()
 		.select({
 			providerSlug: requestMetrics.providerSlug,
-			totalRequests: sql<number>`count(*)::int`,
+			totalRequests: integerCount(),
 		})
 		.from(requestMetrics)
 		.where(timeFilter)
@@ -194,7 +215,7 @@ export async function listStatisticsFilters(
 			instanceSlug: providerInstances.instanceSlug,
 			name: providerInstances.name,
 			providerSlug: providerInstances.providerSlug,
-			totalRequests: sql<number>`count(*)::int`,
+			totalRequests: integerCount(),
 		})
 		.from(requestMetrics)
 		.innerJoin(
@@ -261,8 +282,16 @@ function statisticsFilters(
 		filters.push(gte(requestMetrics.statusCode, 400));
 	const search = options.search?.trim();
 	if (search) {
+		const pattern = `%${search}%`;
 		filters.push(
-			sql`(${requestMetrics.path} ILIKE ${`%${search}%`} OR ${requestMetrics.providerSlug} ILIKE ${`%${search}%`} OR coalesce(${requestMetrics.sourceIp}, '') ILIKE ${`%${search}%`})`,
+			orCaseInsensitiveLike(
+				[
+					requestMetrics.path,
+					requestMetrics.providerSlug,
+					requestMetrics.sourceIp,
+				],
+				pattern,
+			),
 		);
 	}
 	return filters;
@@ -279,21 +308,21 @@ export async function getStatisticsSummary(
 	const to = options.now ?? new Date();
 	const from = rangeStart(range, to);
 	const timeFilter = and(...statisticsFilters(userId, from, to, options));
+	const bucket = hourlyBucket(requestMetrics.occurredAt);
 	const totalsPromise = getDb()
 		.select({
-			totalRequests: sql<number>`count(*)::int`,
-			failedRequests: sql<number>`count(*) filter (where ${requestMetrics.statusCode} >= 400)::int`,
-			averageLatencyMs: sql<number>`coalesce(round(avg(${requestMetrics.latencyMs})), 0)::int`,
-			// percentile_cont returns double precision in PostgreSQL; cast to
-			// numeric before round() (round(double precision) is undefined).
-			p95LatencyMs: sql<number>`coalesce(round((percentile_cont(0.95) within group (order by ${requestMetrics.latencyMs}))::numeric), 0)::int`,
+			totalRequests: integerCount(),
+			failedRequests: filteredIntegerCount(gte(requestMetrics.statusCode, 400)),
+			averageLatencyMs: integerAverage(requestMetrics.latencyMs),
 		})
 		.from(requestMetrics)
 		.where(timeFilter);
 	const healthPromise = getDb()
 		.select({
-			healthy: sql<number>`count(*) filter (where ${providerInstances.health} = 'healthy')::int`,
-			unhealthy: sql<number>`count(*) filter (where ${providerInstances.health} = 'unhealthy')::int`,
+			healthy: filteredIntegerCount(eq(providerInstances.health, "healthy")),
+			unhealthy: filteredIntegerCount(
+				eq(providerInstances.health, "unhealthy"),
+			),
 		})
 		.from(providerInstances)
 		.where(
@@ -309,16 +338,16 @@ export async function getStatisticsSummary(
 		);
 	const hourlyRowsPromise = getDb()
 		.select({
-			bucket: sql<Date>`date_trunc('hour', ${requestMetrics.occurredAt})`,
-			requests: sql<number>`count(*)::int`,
-			failures: sql<number>`count(*) filter (where ${requestMetrics.statusCode} >= 400)::int`,
+			bucket,
+			requests: integerCount(),
+			failures: filteredIntegerCount(gte(requestMetrics.statusCode, 400)),
 		})
 		.from(requestMetrics)
 		.where(timeFilter)
-		.groupBy(sql`date_trunc('hour', ${requestMetrics.occurredAt})`)
-		.orderBy(sql`date_trunc('hour', ${requestMetrics.occurredAt})`);
+		.groupBy(bucket)
+		.orderBy(bucket);
 	const topEndpointsPromise = getDb()
-		.select({ path: requestMetrics.path, requests: sql<number>`count(*)::int` })
+		.select({ path: requestMetrics.path, requests: integerCount() })
 		.from(requestMetrics)
 		.where(timeFilter)
 		.groupBy(requestMetrics.path)
@@ -327,9 +356,9 @@ export async function getStatisticsSummary(
 	const topProvidersPromise = getDb()
 		.select({
 			providerSlug: requestMetrics.providerSlug,
-			totalRequests: sql<number>`count(*)::int`,
-			failedRequests: sql<number>`count(*) filter (where ${requestMetrics.statusCode} >= 400)::int`,
-			averageLatencyMs: sql<number>`coalesce(round(avg(${requestMetrics.latencyMs})), 0)::int`,
+			totalRequests: integerCount(),
+			failedRequests: filteredIntegerCount(gte(requestMetrics.statusCode, 400)),
+			averageLatencyMs: integerAverage(requestMetrics.latencyMs),
 		})
 		.from(requestMetrics)
 		.where(timeFilter)
@@ -339,7 +368,7 @@ export async function getStatisticsSummary(
 	const statusCodesPromise = getDb()
 		.select({
 			statusCode: requestMetrics.statusCode,
-			requests: sql<number>`count(*)::int`,
+			requests: integerCount(),
 		})
 		.from(requestMetrics)
 		.where(timeFilter)
@@ -362,6 +391,15 @@ export async function getStatisticsSummary(
 	]);
 	const totalRequests = Number(totals?.totalRequests ?? 0);
 	const failedRequests = Number(totals?.failedRequests ?? 0);
+	const [p95] = totalRequests
+		? await getDb()
+				.select({ latencyMs: requestMetrics.latencyMs })
+				.from(requestMetrics)
+				.where(timeFilter)
+				.orderBy(asc(requestMetrics.latencyMs))
+				.limit(1)
+				.offset(Math.max(0, Math.ceil(totalRequests * 0.95) - 1))
+		: [];
 	const hours = range === "24h" ? 24 : range === "7d" ? 24 * 7 : 24 * 30;
 	const byHour = new Map(
 		hourlyRows.map((row) => [
@@ -389,7 +427,7 @@ export async function getStatisticsSummary(
 		successRate:
 			totalRequests > 0 ? (totalRequests - failedRequests) / totalRequests : 1,
 		averageLatencyMs: Number(totals?.averageLatencyMs ?? 0),
-		p95LatencyMs: Number(totals?.p95LatencyMs ?? 0),
+		p95LatencyMs: Number(p95?.latencyMs ?? 0),
 		healthyConnections: Number(health?.healthy ?? 0),
 		unhealthyConnections: Number(health?.unhealthy ?? 0),
 		hourly,
@@ -426,7 +464,7 @@ export async function listStatisticsRequests(
 	const filters = statisticsFilters(userId, from, to, options);
 	const where = and(...filters);
 	const [totalRow] = await getDb()
-		.select({ count: sql<number>`count(*)::int` })
+		.select({ count: integerCount() })
 		.from(requestMetrics)
 		.where(where);
 	const rows = await getDb()

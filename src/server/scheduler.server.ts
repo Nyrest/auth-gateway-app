@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, lte, or } from "drizzle-orm";
 
 import { getDb } from "#/db/index.server";
 import {
@@ -199,29 +199,25 @@ async function runMaintenance(now: Date): Promise<SchedulerResult> {
 			const expiredMetricsBefore = new Date(
 				now.getTime() - METRIC_RETENTION_MS,
 			);
+			const expiredMetricIds = getDb()
+				.select({ id: requestMetrics.id })
+				.from(requestMetrics)
+				.where(lt(requestMetrics.occurredAt, expiredMetricsBefore))
+				.orderBy(requestMetrics.occurredAt)
+				.limit(MAX_METRICS_CLEANED_PER_TICK);
 			const deletedMetrics = await getDb()
 				.delete(requestMetrics)
-				.where(
-					sql`${requestMetrics.id} IN (
-						SELECT ${requestMetrics.id}
-						FROM ${requestMetrics}
-						WHERE ${requestMetrics.occurredAt} < ${expiredMetricsBefore}
-						ORDER BY ${requestMetrics.occurredAt}
-						LIMIT ${MAX_METRICS_CLEANED_PER_TICK}
-					)`,
-				)
+				.where(inArray(requestMetrics.id, expiredMetricIds))
 				.returning({ id: requestMetrics.id });
+			const expiredOAuthStateIds = getDb()
+				.select({ id: oauthStates.id })
+				.from(oauthStates)
+				.where(lt(oauthStates.expiresAt, now))
+				.orderBy(oauthStates.expiresAt)
+				.limit(MAX_METRICS_CLEANED_PER_TICK);
 			const deletedOAuthStates = await getDb()
 				.delete(oauthStates)
-				.where(
-					sql`${oauthStates.id} IN (
-						SELECT ${oauthStates.id}
-						FROM ${oauthStates}
-						WHERE ${oauthStates.expiresAt} < ${now}
-						ORDER BY ${oauthStates.expiresAt}
-						LIMIT ${MAX_METRICS_CLEANED_PER_TICK}
-					)`,
-				)
+				.where(inArray(oauthStates.id, expiredOAuthStateIds))
 				.returning({ id: oauthStates.id });
 			const cleanupHasBacklog =
 				deletedMetrics.length === MAX_METRICS_CLEANED_PER_TICK ||

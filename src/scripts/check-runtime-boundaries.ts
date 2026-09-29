@@ -2,10 +2,9 @@ const sourceRoot = `${import.meta.dir}/..`;
 const sharedForbidden = [
 	/\bBun\b/,
 	/cloudflare:workers/,
-	/runtime\/(bun|cloudflare)/,
+	/runtime\/cloudflare/,
 ];
-const cloudflareForbidden = [/\bBun\b/, /runtime\/bun/];
-const bunForbidden = [/cloudflare:workers/, /runtime\/cloudflare/];
+const cloudflareForbidden = [/\bBun\b/];
 
 async function assertBoundary(
 	pattern: string,
@@ -32,4 +31,3 @@ async function assertBoundary(
 
 await assertBoundary("**/*", sharedForbidden);
 await assertBoundary("runtime/cloudflare/**/*", cloudflareForbidden);
-await assertBoundary("runtime/bun/**/*", bunForbidden);
