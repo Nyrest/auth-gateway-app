@@ -1,11 +1,13 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { AppShell } from "#/components/layout/app-shell";
-import { getCurrentSession } from "#/features/auth/auth.functions";
+import { currentSessionQueryOptions } from "#/lib/api";
 
 export const Route = createFileRoute("/_authenticated")({
-	beforeLoad: async ({ location }) => {
-		const session = await getCurrentSession();
+	beforeLoad: async ({ context, location }) => {
+		const session = await context.queryClient.fetchQuery(
+			currentSessionQueryOptions(),
+		);
 		if (!session) {
 			throw redirect({ to: "/login" });
 		}

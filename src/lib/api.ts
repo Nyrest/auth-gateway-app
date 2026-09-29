@@ -1,9 +1,14 @@
-import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import {
+	keepPreviousData,
+	type QueryClient,
+	queryOptions,
+} from "@tanstack/react-query";
 import {
 	listApiKeyScopeOptionsForUser,
 	listApiKeysForUser,
 } from "#/features/api-keys/api-keys.functions";
 import type { ApiKeyListResult } from "#/features/api-keys/api-keys.types";
+import { getCurrentSession } from "#/features/auth/auth.functions";
 import {
 	listConnectionsForUser,
 	listProviderTemplates,
@@ -11,6 +16,9 @@ import {
 import { getSystemSettingsForUser } from "#/features/settings/settings.functions";
 
 export const queryKeys = {
+	auth: {
+		session: ["auth", "session"] as const,
+	},
 	connections: {
 		all: ["connections"] as const,
 		list: () => ["connections", "list"] as const,
@@ -24,6 +32,22 @@ export const queryKeys = {
 	},
 	systemSettings: ["system-settings"] as const,
 } as const;
+
+export const currentSessionQueryOptions = () =>
+	queryOptions({
+		queryKey: queryKeys.auth.session,
+		queryFn: () => getCurrentSession(),
+		staleTime: 10_000,
+		gcTime: 300_000,
+		retry: false,
+	});
+
+export function clearCurrentSessionQueryCache(queryClient: QueryClient): void {
+	queryClient.removeQueries({
+		queryKey: queryKeys.auth.session,
+		exact: true,
+	});
+}
 
 export type ApiKeysQueryInput = {
 	readonly search?: string;

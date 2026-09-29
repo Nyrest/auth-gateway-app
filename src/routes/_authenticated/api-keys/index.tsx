@@ -1,4 +1,5 @@
 import {
+	type QueryClient,
 	useMutation,
 	useQueryClient,
 	useSuspenseQuery,
@@ -45,6 +46,7 @@ import {
 import {
 	createApiKeyForUser,
 	deleteApiKeyForUser,
+	getApiKeysPageDataForUser,
 	revokeApiKeyForUser,
 	updateApiKeyForUser,
 } from "#/features/api-keys/api-keys.functions";
@@ -53,7 +55,12 @@ import type {
 	ApiKeyView,
 } from "#/features/api-keys/api-keys.types";
 import type { ApiKeysQueryInput } from "#/lib/api";
-import { apiKeyScopeOptions, apiKeysQueryOptions, queryKeys } from "#/lib/api";
+import {
+	apiKeyScopeOptions,
+	apiKeysQueryOptions,
+	normalizeApiKeysQueryInput,
+	queryKeys,
+} from "#/lib/api";
 import { m } from "#/paraglide/messages.js";
 import { getLocale } from "#/paraglide/runtime.js";
 
@@ -151,15 +158,32 @@ function sortItems(
 export const Route = createFileRoute("/_authenticated/api-keys/")({
 	validateSearch: parseApiKeysSearch,
 	loaderDeps: ({ search }) => search,
-	loader: ({ context, deps }) =>
-		Promise.all([
-			context.queryClient.ensureQueryData(
-				apiKeysQueryOptions(queryInput(deps)),
-			),
-			context.queryClient.ensureQueryData(apiKeyScopeOptions()),
-		]),
+	loader: ({ context, deps }) => loadApiKeysPage(context.queryClient, deps),
 	component: ApiKeysPage,
 });
+
+async function loadApiKeysPage(
+	queryClient: QueryClient,
+	search: ApiKeysSearch,
+): Promise<void> {
+	const listOptions = apiKeysQueryOptions(queryInput(search));
+	const scopeOptions = apiKeyScopeOptions();
+	if (
+		queryClient.getQueryData(listOptions.queryKey) === undefined &&
+		queryClient.getQueryData(scopeOptions.queryKey) === undefined
+	) {
+		const pageData = await getApiKeysPageDataForUser({
+			data: normalizeApiKeysQueryInput(queryInput(search)),
+		});
+		queryClient.setQueryData(listOptions.queryKey, pageData.keys);
+		queryClient.setQueryData(scopeOptions.queryKey, pageData.scopeOptions);
+		return;
+	}
+	await Promise.all([
+		queryClient.ensureQueryData(listOptions),
+		queryClient.ensureQueryData(scopeOptions),
+	]);
+}
 
 const emptyForm: KeyForm = {
 	label: "",

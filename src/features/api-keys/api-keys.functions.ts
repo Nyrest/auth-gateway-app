@@ -12,22 +12,33 @@ import {
 	updateApiKey,
 } from "./api-keys.server";
 
+const apiKeysQuerySchema = z
+	.object({
+		search: z.string().max(120).optional(),
+		status: z.enum(["all", "active", "expired", "revoked"]).optional(),
+		page: z.number().int().min(0).optional(),
+		pageSize: z.number().int().min(1).max(100).optional(),
+		sort: z.enum(["prefix", "label", "expiresAt", "status"]).optional(),
+		direction: z.enum(["asc", "desc"]).optional(),
+	})
+	.strict()
+	.default({});
+
 export const listApiKeysForUser = createServerFn({ method: "GET" })
 	.middleware([requireUser])
-	.validator(
-		z
-			.object({
-				search: z.string().max(120).optional(),
-				status: z.enum(["all", "active", "expired", "revoked"]).optional(),
-				page: z.number().int().min(0).optional(),
-				pageSize: z.number().int().min(1).max(100).optional(),
-				sort: z.enum(["prefix", "label", "expiresAt", "status"]).optional(),
-				direction: z.enum(["asc", "desc"]).optional(),
-			})
-			.strict()
-			.default({}),
-	)
+	.validator(apiKeysQuerySchema)
 	.handler(({ context, data }) => listApiKeys(context.userId, data ?? {}));
+
+export const getApiKeysPageDataForUser = createServerFn({ method: "GET" })
+	.middleware([requireUser])
+	.validator(apiKeysQuerySchema)
+	.handler(async ({ context, data }) => {
+		const [keys, scopeOptions] = await Promise.all([
+			listApiKeys(context.userId, data ?? {}),
+			listApiKeyScopeOptions(context.userId),
+		]);
+		return { keys, scopeOptions };
+	});
 
 export const createApiKeyForUser = createServerFn({ method: "POST" })
 	.middleware([requireUser])

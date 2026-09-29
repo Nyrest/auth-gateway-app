@@ -1,4 +1,8 @@
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+	type QueryClient,
+	useQueryClient,
+	useSuspenseQuery,
+} from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -49,6 +53,7 @@ import {
 	connectClientCredentialsForUser,
 	disableConnectionForUser,
 	enableConnectionForUser,
+	getConnectionsPageDataForUser,
 	testConnectionForUser,
 } from "#/features/connections/connections.functions";
 import type { ConnectionView } from "#/features/connections/connections.types";
@@ -67,14 +72,53 @@ import { getLocale } from "#/paraglide/runtime.js";
 
 export const Route = createFileRoute("/_authenticated/connections/")({
 	validateSearch: parseConnectionSearch,
-	loader: ({ context }) =>
-		Promise.all([
-			context.queryClient.ensureQueryData(connectionsQueryOptions()),
-			context.queryClient.ensureQueryData(providerTemplatesQueryOptions()),
-			context.queryClient.ensureQueryData(systemSettingsQueryOptions()),
-		]),
+	loader: ({ context }) => loadConnectionsPage(context.queryClient),
 	component: ConnectionsPage,
 });
+
+async function loadConnectionsPage(queryClient: QueryClient): Promise<void> {
+	const connectionsOptions = connectionsQueryOptions();
+	const templatesOptions = providerTemplatesQueryOptions();
+	const settingsOptions = systemSettingsQueryOptions();
+	if (isConnectionsPageCacheEmpty(queryClient)) {
+		await seedConnectionsPageCache(queryClient);
+		return;
+	}
+	await Promise.all([
+		queryClient.ensureQueryData(connectionsOptions),
+		queryClient.ensureQueryData(templatesOptions),
+		queryClient.ensureQueryData(settingsOptions),
+	]);
+}
+
+function isConnectionsPageCacheEmpty(queryClient: QueryClient): boolean {
+	return (
+		queryClient.getQueryData(connectionsQueryOptions().queryKey) ===
+			undefined &&
+		queryClient.getQueryData(providerTemplatesQueryOptions().queryKey) ===
+			undefined &&
+		queryClient.getQueryData(systemSettingsQueryOptions().queryKey) ===
+			undefined
+	);
+}
+
+async function seedConnectionsPageCache(
+	queryClient: QueryClient,
+): Promise<void> {
+	const pageData = await getConnectionsPageDataForUser();
+	queryClient.setQueryData(
+		connectionsQueryOptions().queryKey,
+		pageData.connections,
+	);
+	queryClient.setQueryData(
+		providerTemplatesQueryOptions().queryKey,
+		pageData.providerTemplates,
+	);
+	queryClient.setQueryData(
+		systemSettingsQueryOptions().queryKey,
+		pageData.settings,
+	);
+}
 
 type GroupBy = "none" | "category" | "provider" | "status";
 

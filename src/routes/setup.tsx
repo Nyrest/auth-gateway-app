@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { ShieldCheck } from "lucide-react";
@@ -24,6 +25,7 @@ import {
 	type SetupField,
 	type SetupFieldErrors,
 } from "#/features/auth/setup-errors";
+import { clearCurrentSessionQueryCache } from "#/lib/api";
 import { m } from "#/paraglide/messages.js";
 
 export const Route = createFileRoute("/setup")({
@@ -39,6 +41,7 @@ export const Route = createFileRoute("/setup")({
 
 function SetupPage() {
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const completeSetupRequest = useServerFn(completeSetup);
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
@@ -78,6 +81,7 @@ function SetupPage() {
 			if (result.error) {
 				throw new Error(m.sign_in_failed());
 			}
+			clearCurrentSessionQueryCache(queryClient);
 			await navigate({ to: "/" });
 		} catch (caught) {
 			const nextFieldErrors = getSetupFieldErrors(caught);

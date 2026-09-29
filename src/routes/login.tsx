@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -17,6 +18,7 @@ import { getSetupStatus } from "#/features/auth/auth.functions";
 import { authClient } from "#/features/auth/auth-client";
 import styles from "#/features/auth/auth-page.module.css";
 import { loginCredentialFields } from "#/features/auth/login-credentials";
+import { clearCurrentSessionQueryCache } from "#/lib/api";
 import { m } from "#/paraglide/messages.js";
 
 export const Route = createFileRoute("/login")({
@@ -31,6 +33,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string>();
@@ -45,6 +48,7 @@ function LoginPage() {
 				setError(m.passkey_sign_in_failed());
 				return;
 			}
+			clearCurrentSessionQueryCache(queryClient);
 			await navigate({ to: "/" });
 		} catch {
 			setError(m.passkey_sign_in_failed());
@@ -63,6 +67,7 @@ function LoginPage() {
 				setError(m.invalid_email_or_password());
 				return;
 			}
+			clearCurrentSessionQueryCache(queryClient);
 			await navigate({ to: "/" });
 		} catch {
 			setError(m.sign_in_failed());

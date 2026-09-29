@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { getSystemSettings } from "#/features/settings/settings.server";
 import { maximumCustomHeadersBytes } from "#/lib/headers";
 
 import { requireUser } from "#/server/auth-middleware";
@@ -39,6 +40,16 @@ export const listProviderTemplates = createServerFn({ method: "GET" })
 export const listConnectionsForUser = createServerFn({ method: "GET" })
 	.middleware([requireUser])
 	.handler(({ context }) => listConnections(context.userId));
+
+export const getConnectionsPageDataForUser = createServerFn({ method: "GET" })
+	.middleware([requireUser])
+	.handler(async ({ context }) => {
+		const [connections, settings] = await Promise.all([
+			listConnections(context.userId),
+			getSystemSettings(),
+		]);
+		return { connections, providerTemplates, settings };
+	});
 
 export const createConnectionForUser = createServerFn({ method: "POST" })
 	.middleware([requireUser])
