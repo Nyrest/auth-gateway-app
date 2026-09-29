@@ -5,7 +5,6 @@ import {
 	appSettings,
 	oauthStates,
 	providerInstances,
-	requestMetrics,
 	userSettings,
 } from "#/db/schema";
 import { verifyConnection } from "#/features/connections/connection-actions.server";
@@ -17,9 +16,8 @@ const LEASE_MS = 9 * 60_000;
 // One network job per ten-minute tick keeps the default inside the Workers Free
 // 10 ms CPU budget while still providing a predictable daily refresh cadence.
 const MAX_JOBS_PER_TICK = 1;
-const METRIC_RETENTION_MS = 30 * 24 * 60 * 60_000;
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60_000;
-const MAX_METRICS_CLEANED_PER_TICK = 500;
+const MAX_CLEANUP_ROWS_PER_TICK = 500;
 
 export type SchedulerResult = {
 	readonly cleanupRan: boolean;
@@ -194,38 +192,25 @@ async function runMaintenance(now: Date): Promise<SchedulerResult> {
 			.where(eq(appSettings.id, "primary"))
 			.limit(1);
 		const cleanupDue =
-			!settings?.metricsCleanupDueAt || settings.metricsCleanupDueAt <= now;
+			!settings?.maintenanceCleanupDueAt ||
+			settings.maintenanceCleanupDueAt <= now;
 		if (cleanupDue) {
-			const expiredMetricsBefore = new Date(
-				now.getTime() - METRIC_RETENTION_MS,
-			);
-			const expiredMetricIds = getDb()
-				.select({ id: requestMetrics.id })
-				.from(requestMetrics)
-				.where(lt(requestMetrics.occurredAt, expiredMetricsBefore))
-				.orderBy(requestMetrics.occurredAt)
-				.limit(MAX_METRICS_CLEANED_PER_TICK);
-			const deletedMetrics = await getDb()
-				.delete(requestMetrics)
-				.where(inArray(requestMetrics.id, expiredMetricIds))
-				.returning({ id: requestMetrics.id });
 			const expiredOAuthStateIds = getDb()
 				.select({ id: oauthStates.id })
 				.from(oauthStates)
 				.where(lt(oauthStates.expiresAt, now))
 				.orderBy(oauthStates.expiresAt)
-				.limit(MAX_METRICS_CLEANED_PER_TICK);
+				.limit(MAX_CLEANUP_ROWS_PER_TICK);
 			const deletedOAuthStates = await getDb()
 				.delete(oauthStates)
 				.where(inArray(oauthStates.id, expiredOAuthStateIds))
 				.returning({ id: oauthStates.id });
 			const cleanupHasBacklog =
-				deletedMetrics.length === MAX_METRICS_CLEANED_PER_TICK ||
-				deletedOAuthStates.length === MAX_METRICS_CLEANED_PER_TICK;
+				deletedOAuthStates.length === MAX_CLEANUP_ROWS_PER_TICK;
 			await getDb()
 				.update(appSettings)
 				.set({
-					metricsCleanupDueAt: new Date(
+					maintenanceCleanupDueAt: new Date(
 						now.getTime() + (cleanupHasBacklog ? 0 : CLEANUP_INTERVAL_MS),
 					),
 					updatedAt: now,

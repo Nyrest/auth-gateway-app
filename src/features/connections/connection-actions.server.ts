@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "#/db/index.server";
 import { providerInstances } from "#/db/schema";
-import { recordAuditEvent } from "#/server/audit.server";
 import { applyCustomHeaders } from "#/server/custom-headers.server";
 import { GatewayError } from "#/server/errors";
 import { fetchUpstream } from "#/server/outbound-request.server";
@@ -211,13 +210,5 @@ export async function verifyConnection(
 					: []),
 			),
 		);
-	recordAuditEvent({
-		action: ok ? "connection.verified" : "connection.verification_failed",
-		metadata: { statusCode: response?.status ?? null },
-		resourceId: instanceId,
-		resourceType: "connection",
-		result: ok ? "success" : "failure",
-		userId,
-	});
 	return { ok, statusCode: response?.status ?? 502 };
 }

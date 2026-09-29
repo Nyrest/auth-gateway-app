@@ -1,13 +1,10 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { uuidv7 } from "uuidv7";
-
 import { getDb } from "#/db/index.server";
-import { type apiKeys, providerInstances, requestMetrics } from "#/db/schema";
+import { type apiKeys, providerInstances } from "#/db/schema";
 import {
 	asStringArray,
 	findActiveApiKey,
 	getOrCreatePlaygroundApiKey,
-	markApiKeyUsed,
 } from "#/features/api-keys/api-keys.server";
 import { getProviderDefinition } from "#/features/connections/providers/registry";
 import { readConnectionSecrets } from "#/features/connections/secrets.server";
@@ -15,7 +12,6 @@ import { applyCustomHeaders } from "./custom-headers.server";
 import { GatewayError } from "./errors";
 import { evaluateExpression } from "./expression.server";
 import { fetchUpstream } from "./outbound-request.server";
-import { getRequestRuntime } from "./request-runtime.server";
 import { appendUpstreamPath, parseHttpUrl } from "./url.server";
 
 export { applyCustomHeaders } from "./custom-headers.server";
@@ -428,31 +424,6 @@ function rewriteSseEndpoint(
 	);
 }
 
-async function recordMetric(input: {
-	readonly apiKeyId: string;
-	readonly instanceId: string;
-	readonly latencyMs: number;
-	readonly method: string;
-	readonly path: string;
-	readonly providerSlug: string;
-	readonly sourceIp: string | null;
-	readonly statusCode: number;
-	readonly userId: string;
-}): Promise<void> {
-	await getDb().insert(requestMetrics).values({
-		id: uuidv7(),
-		userId: input.userId,
-		instanceId: input.instanceId,
-		apiKeyId: input.apiKeyId,
-		providerSlug: input.providerSlug,
-		method: input.method,
-		path: input.path,
-		statusCode: input.statusCode,
-		latencyMs: input.latencyMs,
-		sourceIp: input.sourceIp,
-	});
-}
-
 type ProxyApiKey = typeof apiKeys.$inferSelect;
 
 function assertProxyPath(path: string): void {
@@ -471,7 +442,6 @@ async function proxyWithInstance(
 	instance: typeof providerInstances.$inferSelect,
 	path: string,
 ): Promise<Response> {
-	const startedAt = performance.now();
 	const outboundHeaders = copyRequestHeaders(request.headers);
 	const secrets = await readConnectionSecrets(key.userId, instance.id);
 	injectConnectionCredentials(
@@ -538,19 +508,6 @@ async function proxyWithInstance(
 			timeoutMs: 15_000,
 		});
 	} catch {
-		getRequestRuntime().deferred.defer(() =>
-			recordMetric({
-				apiKeyId: key.id,
-				instanceId: instance.id,
-				latencyMs: Math.round(performance.now() - startedAt),
-				method: request.method,
-				path,
-				providerSlug: instance.providerSlug,
-				sourceIp: getRequestRuntime().clientIp,
-				statusCode: 502,
-				userId: key.userId,
-			}),
-		);
 		throw new GatewayError(
 			502,
 			"UPSTREAM_UNAVAILABLE",
@@ -558,22 +515,6 @@ async function proxyWithInstance(
 		);
 	}
 
-	getRequestRuntime().deferred.defer(async () => {
-		await Promise.all([
-			markApiKeyUsed(key.id),
-			recordMetric({
-				apiKeyId: key.id,
-				instanceId: instance.id,
-				latencyMs: Math.round(performance.now() - startedAt),
-				method: request.method,
-				path,
-				providerSlug: instance.providerSlug,
-				sourceIp: getRequestRuntime().clientIp,
-				statusCode: upstream.status,
-				userId: key.userId,
-			}),
-		]);
-	});
 	const responseHeaders = copyResponseHeaders(upstream.headers);
 	const responseBody =
 		configuredTransport === "sse"

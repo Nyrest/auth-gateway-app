@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 
 import { getDb } from "#/db/index.server";
 import { appSettings } from "#/db/schema";
-import { recordAuditEvent } from "#/server/audit.server";
 import { GatewayError } from "#/server/errors";
 import { isAlwaysAllowedLoopbackHost } from "#/server/local-origin.server";
 
@@ -108,13 +107,5 @@ export async function updateSystemSettings(
 			"System settings are unavailable.",
 		);
 	}
-	recordAuditEvent({
-		action: "system_settings.updated",
-		metadata: {
-			publicOrigin: updated.publicOrigin,
-		},
-		resourceType: "system_settings",
-		userId,
-	});
 	return updated;
 }

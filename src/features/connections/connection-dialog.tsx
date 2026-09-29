@@ -1,5 +1,5 @@
 import { useDebouncedValue } from "@tanstack/react-pacer";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -43,7 +43,7 @@ import {
 	SelectValue,
 } from "#/components/ui/select";
 import { Textarea } from "#/components/ui/textarea";
-import { connectionDetailsQueryOptions, queryKeys } from "#/lib/api";
+import { queryKeys } from "#/lib/api";
 import { parseStoredHeaders, serializeStoredHeaders } from "#/lib/headers";
 import { m } from "#/paraglide/messages.js";
 import { getLocale } from "#/paraglide/runtime.js";
@@ -507,10 +507,6 @@ export function ConnectionConfigDialog({
 	const createConnection = useServerFn(createConnectionForUser);
 	const updateConnection = useServerFn(updateConnectionForUser);
 	const editing = Boolean(connection);
-	const detailsQuery = useQuery({
-		...connectionDetailsQueryOptions(connection?.id ?? ""),
-		enabled: open && editing,
-	});
 	const [form, setForm] = useState<ConnectionForm>({
 		name: "",
 		providerSlug: "",
@@ -645,7 +641,7 @@ export function ConnectionConfigDialog({
 					</div>
 				</DialogHeader>
 				{editing && connection ? (
-					<div className="grid gap-3 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+					<div className="grid gap-3 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
 						<Stat
 							label={m.status()}
 							value={connection.enabled ? m.enabled() : m.disabled()}
@@ -658,34 +654,6 @@ export function ConnectionConfigDialog({
 						<Stat
 							label={m.last_updated()}
 							value={formatDateTime(connection.updatedAt)}
-						/>
-						<Stat
-							label={m.requests()}
-							value={
-								detailsQuery.data
-									? m.requests_count({
-											count: detailsQuery.data.metrics24h.requests,
-										})
-									: m.loading()
-							}
-						/>
-						<Stat
-							label={m.success_rate()}
-							value={
-								detailsQuery.data
-									? `${(detailsQuery.data.metrics24h.successRate * 100).toFixed(1)}%`
-									: m.loading()
-							}
-						/>
-						<Stat
-							label={m.p95_latency()}
-							value={
-								detailsQuery.data
-									? m.duration_milliseconds({
-											value: detailsQuery.data.metrics24h.p95LatencyMs,
-										})
-									: m.loading()
-							}
 						/>
 					</div>
 				) : null}

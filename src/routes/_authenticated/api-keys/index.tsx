@@ -303,7 +303,6 @@ function ApiKeysPage() {
 					instanceIds: created.instanceIds,
 					expiresAt: created.expiresAt,
 					revokedAt: created.revokedAt,
-					lastUsedAt: created.lastUsedAt,
 					createdAt: created.createdAt,
 				};
 				queryClient.setQueryData<ApiKeyListResult>(

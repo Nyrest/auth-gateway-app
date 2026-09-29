@@ -16,7 +16,6 @@ import { uuidv7 } from "uuidv7";
 import { getDb } from "#/db/index.server";
 import { apiKeys, providerInstances } from "#/db/schema";
 import { caseInsensitiveLike } from "#/db/sql.server";
-import { recordAuditEvent } from "#/server/audit.server";
 import { sha256 } from "#/server/config.server";
 import { createApiKeySecret } from "#/server/crypto.server";
 import { GatewayError } from "#/server/errors";
@@ -60,7 +59,6 @@ function toView(key: typeof apiKeys.$inferSelect): ApiKeyView {
 		instanceIds: asStringArray(key.instanceIds),
 		expiresAt: key.expiresAt,
 		revokedAt: key.revokedAt,
-		lastUsedAt: key.lastUsedAt,
 		createdAt: key.createdAt,
 	};
 }
@@ -236,16 +234,6 @@ export async function createApiKey(
 			"The API key could not be created.",
 		);
 	}
-	recordAuditEvent({
-		action: "api_key.created",
-		metadata: {
-			instanceCount: normalizedScope.instanceIds.length,
-			providerSlugs: normalizedScope.providerSlugs.join(","),
-		},
-		resourceId: id,
-		resourceType: "api_key",
-		userId,
-	});
 	return { ...toView(created), secret };
 }
 
@@ -315,12 +303,6 @@ export async function updateApiKey(
 			"API_KEY_NOT_FOUND",
 			"API key not found or revoked.",
 		);
-	recordAuditEvent({
-		action: "api_key.updated",
-		resourceId: id,
-		resourceType: "api_key",
-		userId,
-	});
 	return toView(updated);
 }
 
@@ -337,12 +319,6 @@ export async function deleteApiKey(userId: string, id: string): Promise<void> {
 		.returning({ id: apiKeys.id });
 	if (!deleted)
 		throw new GatewayError(404, "API_KEY_NOT_FOUND", "API key not found.");
-	recordAuditEvent({
-		action: "api_key.deleted",
-		resourceId: id,
-		resourceType: "api_key",
-		userId,
-	});
 }
 
 async function validateApiKeyScope(
@@ -449,12 +425,6 @@ export async function revokeApiKey(userId: string, id: string): Promise<void> {
 			"API key not found or already revoked.",
 		);
 	}
-	recordAuditEvent({
-		action: "api_key.revoked",
-		resourceId: id,
-		resourceType: "api_key",
-		userId,
-	});
 }
 
 export async function findActiveApiKey(rawKey: string) {
@@ -472,13 +442,6 @@ export async function findActiveApiKey(rawKey: string) {
 		)
 		.limit(1);
 	return key;
-}
-
-export async function markApiKeyUsed(id: string): Promise<void> {
-	await getDb()
-		.update(apiKeys)
-		.set({ lastUsedAt: new Date() })
-		.where(eq(apiKeys.id, id));
 }
 
 export async function getOrCreatePlaygroundApiKey(userId: string) {

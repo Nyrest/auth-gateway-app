@@ -20,11 +20,9 @@ import { Route as HealthLiveRouteImport } from './routes/health/live'
 import { Route as HealthReadyRouteImport } from './routes/health/ready'
 import { Route as OauthCallbackRouteImport } from './routes/oauth/callback'
 import { Route as AuthenticatedApiKeysIndexRouteImport } from './routes/_authenticated/api-keys/index'
-import { Route as AuthenticatedAuditIndexRouteImport } from './routes/_authenticated/audit/index'
 import { Route as AuthenticatedConnectionsIndexRouteImport } from './routes/_authenticated/connections/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
-import { Route as AuthenticatedStatisticsIndexRouteImport } from './routes/_authenticated/statistics/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiPlaygroundConnectionIdRouteImport } from './routes/api/playground/$connectionId'
 import { Route as EndpointProviderSlugSplatRouteImport } from './routes/endpoint/$providerSlug/$'
@@ -86,11 +84,6 @@ const AuthenticatedApiKeysIndexRoute =
     path: '/api-keys/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedAuditIndexRoute = AuthenticatedAuditIndexRouteImport.update({
-  id: '/audit/',
-  path: '/audit/',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedConnectionsIndexRoute =
   AuthenticatedConnectionsIndexRouteImport.update({
     id: '/connections/',
@@ -107,12 +100,6 @@ const AuthenticatedSettingsIndexRoute =
   AuthenticatedSettingsIndexRouteImport.update({
     id: '/settings/',
     path: '/settings/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedStatisticsIndexRoute =
-  AuthenticatedStatisticsIndexRouteImport.update({
-    id: '/statistics/',
-    path: '/statistics/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -160,11 +147,9 @@ export interface FileRoutesByFullPath {
   '/endpoint/$providerSlug/$': typeof EndpointProviderSlugSplatRoute
   '/oauth/client-metadata/$connectionId': typeof OauthClientMetadataConnectionIdRoute
   '/api-keys/': typeof AuthenticatedApiKeysIndexRoute
-  '/audit/': typeof AuthenticatedAuditIndexRoute
   '/connections/': typeof AuthenticatedConnectionsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
-  '/statistics/': typeof AuthenticatedStatisticsIndexRoute
   '/api/playground/$connectionId/$': typeof ApiPlaygroundConnectionIdSplatRoute
 }
 export interface FileRoutesByTo {
@@ -182,11 +167,9 @@ export interface FileRoutesByTo {
   '/endpoint/$providerSlug/$': typeof EndpointProviderSlugSplatRoute
   '/oauth/client-metadata/$connectionId': typeof OauthClientMetadataConnectionIdRoute
   '/api-keys': typeof AuthenticatedApiKeysIndexRoute
-  '/audit': typeof AuthenticatedAuditIndexRoute
   '/connections': typeof AuthenticatedConnectionsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
-  '/statistics': typeof AuthenticatedStatisticsIndexRoute
   '/api/playground/$connectionId/$': typeof ApiPlaygroundConnectionIdSplatRoute
 }
 export interface FileRoutesById {
@@ -206,11 +189,9 @@ export interface FileRoutesById {
   '/endpoint/$providerSlug/$': typeof EndpointProviderSlugSplatRoute
   '/oauth/client-metadata/$connectionId': typeof OauthClientMetadataConnectionIdRoute
   '/_authenticated/api-keys/': typeof AuthenticatedApiKeysIndexRoute
-  '/_authenticated/audit/': typeof AuthenticatedAuditIndexRoute
   '/_authenticated/connections/': typeof AuthenticatedConnectionsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
-  '/_authenticated/statistics/': typeof AuthenticatedStatisticsIndexRoute
   '/api/playground/$connectionId/$': typeof ApiPlaygroundConnectionIdSplatRoute
 }
 export interface FileRouteTypes {
@@ -230,11 +211,9 @@ export interface FileRouteTypes {
     | '/endpoint/$providerSlug/$'
     | '/oauth/client-metadata/$connectionId'
     | '/api-keys/'
-    | '/audit/'
     | '/connections/'
     | '/playground/'
     | '/settings/'
-    | '/statistics/'
     | '/api/playground/$connectionId/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -252,11 +231,9 @@ export interface FileRouteTypes {
     | '/endpoint/$providerSlug/$'
     | '/oauth/client-metadata/$connectionId'
     | '/api-keys'
-    | '/audit'
     | '/connections'
     | '/playground'
     | '/settings'
-    | '/statistics'
     | '/api/playground/$connectionId/$'
   id:
     | '__root__'
@@ -275,11 +252,9 @@ export interface FileRouteTypes {
     | '/endpoint/$providerSlug/$'
     | '/oauth/client-metadata/$connectionId'
     | '/_authenticated/api-keys/'
-    | '/_authenticated/audit/'
     | '/_authenticated/connections/'
     | '/_authenticated/playground/'
     | '/_authenticated/settings/'
-    | '/_authenticated/statistics/'
     | '/api/playground/$connectionId/$'
   fileRoutesById: FileRoutesById
 }
@@ -376,13 +351,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedApiKeysIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/audit/': {
-      id: '/_authenticated/audit/'
-      path: '/audit'
-      fullPath: '/audit/'
-      preLoaderRoute: typeof AuthenticatedAuditIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/connections/': {
       id: '/_authenticated/connections/'
       path: '/connections'
@@ -402,13 +370,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings/'
       preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/statistics/': {
-      id: '/_authenticated/statistics/'
-      path: '/statistics'
-      fullPath: '/statistics/'
-      preLoaderRoute: typeof AuthenticatedStatisticsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/api/auth/$': {
@@ -453,22 +414,18 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDocsRoute: typeof AuthenticatedDocsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedApiKeysIndexRoute: typeof AuthenticatedApiKeysIndexRoute
-  AuthenticatedAuditIndexRoute: typeof AuthenticatedAuditIndexRoute
   AuthenticatedConnectionsIndexRoute: typeof AuthenticatedConnectionsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
-  AuthenticatedStatisticsIndexRoute: typeof AuthenticatedStatisticsIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDocsRoute: AuthenticatedDocsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedApiKeysIndexRoute: AuthenticatedApiKeysIndexRoute,
-  AuthenticatedAuditIndexRoute: AuthenticatedAuditIndexRoute,
   AuthenticatedConnectionsIndexRoute: AuthenticatedConnectionsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
-  AuthenticatedStatisticsIndexRoute: AuthenticatedStatisticsIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

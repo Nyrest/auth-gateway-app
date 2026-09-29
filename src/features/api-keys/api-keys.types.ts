@@ -15,7 +15,6 @@ export type ApiKeyView = {
 	readonly instanceIds: readonly string[];
 	readonly expiresAt: Date | null;
 	readonly revokedAt: Date | null;
-	readonly lastUsedAt: Date | null;
 	readonly createdAt: Date;
 };
 

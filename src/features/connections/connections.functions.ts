@@ -10,7 +10,6 @@ import {
 	asJsonObject,
 	createConnection,
 	deleteConnection,
-	getConnectionDetails,
 	listConnections,
 	setConnectionEnabled,
 	updateConnection,
@@ -120,13 +119,6 @@ export const testConnectionForUser = createServerFn({ method: "POST" })
 	.middleware([requireUser])
 	.validator(connectionIdSchema)
 	.handler(({ context, data }) => verifyConnection(context.userId, data.id));
-
-export const getConnectionDetailsForUser = createServerFn({ method: "GET" })
-	.middleware([requireUser])
-	.validator(connectionIdSchema)
-	.handler(({ context, data }) =>
-		getConnectionDetails(context.userId, data.id),
-	);
 
 export const deleteConnectionForUser = createServerFn({ method: "POST" })
 	.middleware([requireUser])

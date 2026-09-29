@@ -38,14 +38,6 @@ export function asConnectionEnabledResult(
 	return { enabled };
 }
 
-export type ConnectionDetailsView = ConnectionView & {
-	readonly metrics24h: {
-		readonly requests: number;
-		readonly successRate: number;
-		readonly p95LatencyMs: number;
-	};
-};
-
 export function isJsonValue(value: unknown): value is JsonValue {
 	if (
 		value === null ||

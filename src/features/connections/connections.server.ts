@@ -1,26 +1,19 @@
-import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 
 import { getDb } from "#/db/index.server";
-import {
-	providerInstances,
-	providerSecrets,
-	requestMetrics,
-} from "#/db/schema";
-import { filteredIntegerCount, integerCount } from "#/db/sql.server";
+import { providerInstances, providerSecrets } from "#/db/schema";
 import {
 	maximumCustomHeadersBytes,
 	parseStoredHeaders,
 	serializeStoredHeaders,
 } from "#/lib/headers";
-import { recordAuditEvent } from "#/server/audit.server";
 import { createAssociatedData, encryptSecret } from "#/server/crypto.server";
 import { GatewayError } from "#/server/errors";
 import { parseHttpUrl } from "#/server/url.server";
 import {
 	asConnectionEnabledResult,
 	asJsonObject,
-	type ConnectionDetailsView,
 	type ConnectionEnabledResult,
 	type ConnectionView,
 	isJsonValue,
@@ -35,7 +28,6 @@ import {
 } from "./templates";
 
 export type {
-	ConnectionDetailsView,
 	ConnectionEnabledResult,
 	ConnectionView,
 	JsonObject,
@@ -359,67 +351,6 @@ export async function listConnections(
 	return instances.map((instance) => toView(instance));
 }
 
-export async function getConnection(
-	userId: string,
-	id: string,
-): Promise<ConnectionView> {
-	const db = getDb();
-	const [instance] = await db
-		.select()
-		.from(providerInstances)
-		.where(
-			and(eq(providerInstances.userId, userId), eq(providerInstances.id, id)),
-		)
-		.limit(1);
-	if (!instance) {
-		throw new GatewayError(
-			404,
-			"CONNECTION_NOT_FOUND",
-			"Connection not found.",
-		);
-	}
-	return toView(instance);
-}
-
-export async function getConnectionDetails(
-	userId: string,
-	id: string,
-): Promise<ConnectionDetailsView> {
-	const connection = await getConnection(userId, id);
-	const from = new Date(Date.now() - 24 * 60 * 60_000);
-	const metricFilter = and(
-		eq(requestMetrics.userId, userId),
-		eq(requestMetrics.instanceId, id),
-		gte(requestMetrics.occurredAt, from),
-	);
-	const [metrics] = await getDb()
-		.select({
-			requests: integerCount(),
-			failures: filteredIntegerCount(gte(requestMetrics.statusCode, 400)),
-		})
-		.from(requestMetrics)
-		.where(metricFilter);
-	const requests = Number(metrics?.requests ?? 0);
-	const failures = Number(metrics?.failures ?? 0);
-	const [p95] = requests
-		? await getDb()
-				.select({ latencyMs: requestMetrics.latencyMs })
-				.from(requestMetrics)
-				.where(metricFilter)
-				.orderBy(asc(requestMetrics.latencyMs))
-				.limit(1)
-				.offset(Math.max(0, Math.ceil(requests * 0.95) - 1))
-		: [];
-	return {
-		...connection,
-		metrics24h: {
-			requests,
-			successRate: requests > 0 ? (requests - failures) / requests : 1,
-			p95LatencyMs: Number(p95?.latencyMs ?? 0),
-		},
-	};
-}
-
 export async function createConnection(
 	userId: string,
 	data: CreateConnectionData,
@@ -504,13 +435,6 @@ export async function createConnection(
 			"The connection could not be created.",
 		);
 	}
-	recordAuditEvent({
-		action: "connection.created",
-		metadata: { providerSlug, templateSlug: template.slug },
-		resourceId: id,
-		resourceType: "connection",
-		userId,
-	});
 	return toView(instance);
 }
 
@@ -532,12 +456,6 @@ export async function deleteConnection(
 			"Connection not found.",
 		);
 	}
-	recordAuditEvent({
-		action: "connection.deleted",
-		resourceId: id,
-		resourceType: "connection",
-		userId,
-	});
 }
 
 export type UpdateConnectionData = {
@@ -660,13 +578,6 @@ export async function updateConnection(
 			);
 	}
 	await saveConnectionSecrets(userId, id, persistedSecretUpdates, db);
-	recordAuditEvent({
-		action: "connection.updated",
-		metadata: { providerSlug },
-		resourceId: id,
-		resourceType: "connection",
-		userId,
-	});
 	return toView(updated);
 }
 
@@ -688,11 +599,5 @@ export async function setConnectionEnabled(
 			"CONNECTION_NOT_FOUND",
 			"Connection not found.",
 		);
-	recordAuditEvent({
-		action: enabled ? "connection.enabled" : "connection.disabled",
-		resourceId: id,
-		resourceType: "connection",
-		userId,
-	});
 	return asConnectionEnabledResult(updated.enabled);
 }

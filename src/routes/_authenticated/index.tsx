@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Activity, KeyRound, PlugZap } from "lucide-react";
+import { KeyRound, PlugZap } from "lucide-react";
 
 import { PageHeader } from "#/components/layout/app-shell";
 import {
@@ -27,16 +27,11 @@ function OverviewPage() {
 			icon: KeyRound,
 			title: m.api_keys(),
 		},
-		{
-			description: m.overview_activity_description(),
-			icon: Activity,
-			title: m.overview_activity(),
-		},
 	] as const;
 	return (
 		<>
 			<PageHeader description={m.overview_description()} title={m.overview()} />
-			<div className="grid gap-4 md:grid-cols-3">
+			<div className="grid gap-4 md:grid-cols-2">
 				{cards.map(({ description, icon: Icon, title }) => (
 					<Card key={title} className="shadow-sm">
 						<CardHeader>

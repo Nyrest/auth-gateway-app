@@ -47,7 +47,7 @@ export const appSettings = sqliteTable("app_settings", {
 		onDelete: "set null",
 	}),
 	publicOrigin: text("public_origin"),
-	metricsCleanupDueAt: timestamp("metrics_cleanup_due_at"),
+	maintenanceCleanupDueAt: timestamp("maintenance_cleanup_due_at"),
 	schedulerLeaseUntil: timestamp("scheduler_lease_until"),
 	...timestampColumns,
 });
@@ -194,7 +194,6 @@ export const apiKeys = sqliteTable(
 		instanceIds: text("instance_ids", { mode: "json" }).notNull().default([]),
 		expiresAt: timestamp("expires_at"),
 		revokedAt: timestamp("revoked_at"),
-		lastUsedAt: timestamp("last_used_at"),
 		...timestampColumns,
 	},
 	(table) => [
@@ -206,78 +205,8 @@ export const apiKeys = sqliteTable(
 	],
 );
 
-export const auditEvents = sqliteTable(
-	"audit_event",
-	{
-		id: text("id").primaryKey(),
-		userId: text("user_id")
-			.notNull()
-			.references(() => authUsers.id, { onDelete: "cascade" }),
-		action: text("action").notNull(),
-		resourceType: text("resource_type").notNull(),
-		resourceId: text("resource_id"),
-		result: text("result").notNull().default("success"),
-		metadata: text("metadata", { mode: "json" }).notNull().default({}),
-		occurredAt: timestamp("occurred_at").notNull().default(now),
-	},
-	(table) => [
-		index("audit_event_user_occurred_idx").on(table.userId, table.occurredAt),
-		index("audit_event_user_result_occurred_idx").on(
-			table.userId,
-			table.result,
-			table.occurredAt,
-		),
-	],
-);
-
-export const requestMetrics = sqliteTable(
-	"request_metric",
-	{
-		id: text("id").primaryKey(),
-		userId: text("user_id")
-			.notNull()
-			.references(() => authUsers.id, { onDelete: "cascade" }),
-		instanceId: text("instance_id").references(() => providerInstances.id, {
-			onDelete: "set null",
-		}),
-		apiKeyId: text("api_key_id").references(() => apiKeys.id, {
-			onDelete: "set null",
-		}),
-		providerSlug: text("provider_slug").notNull(),
-		method: text("method").notNull().default("GET"),
-		path: text("path").notNull().default("/"),
-		statusCode: integer("status_code").notNull(),
-		latencyMs: integer("latency_ms").notNull(),
-		sourceIp: text("source_ip"),
-		occurredAt: timestamp("occurred_at").notNull().default(now),
-	},
-	(table) => [
-		index("request_metric_user_occurred_idx").on(
-			table.userId,
-			table.occurredAt,
-		),
-		index("request_metric_user_provider_occurred_idx").on(
-			table.userId,
-			table.providerSlug,
-			table.occurredAt,
-		),
-		index("request_metric_user_status_occurred_idx").on(
-			table.userId,
-			table.statusCode,
-			table.occurredAt,
-		),
-		index("request_metric_user_instance_occurred_idx").on(
-			table.userId,
-			table.instanceId,
-			table.occurredAt,
-		),
-		index("request_metric_occurred_idx").on(table.occurredAt),
-	],
-);
-
 export const gatewaySchema = {
 	appSettings,
-	auditEvents,
 	apiKeys,
 	account: authAccounts,
 	passkey: authPasskeys,
@@ -285,7 +214,6 @@ export const gatewaySchema = {
 	providerInstances,
 	providerSecrets,
 	rateLimit: authRateLimits,
-	requestMetrics,
 	session: authSessions,
 	user: authUsers,
 	userSettings,

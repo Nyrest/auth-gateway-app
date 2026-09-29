@@ -1,7 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
-	Activity,
-	BarChart3,
 	BookOpenText,
 	KeyRound,
 	LayoutDashboard,
@@ -25,8 +23,6 @@ const navigation = [
 	{ icon: PlugZap, label: () => m.connections(), to: "/connections" },
 	{ icon: Play, label: () => m.playground(), to: "/playground" },
 	{ icon: KeyRound, label: () => m.api_keys(), to: "/api-keys" },
-	{ icon: Activity, label: () => m.audit_log(), to: "/audit" },
-	{ icon: BarChart3, label: () => m.statistics(), to: "/statistics" },
 ] as const;
 
 function getPageLabel(pathname: string): string {

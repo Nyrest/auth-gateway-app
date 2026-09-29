@@ -7,8 +7,8 @@ Auth Gateway is a self-hosted Cloudflare Worker for sending requests to upstream
 - Connect generic HTTP endpoints and predefined providers, including API-key, OAuth/OIDC, and MCP providers.
 - Add optional encrypted custom headers to every provider.
 - Create API keys with provider-level access rules.
-- Test requests in Playground and inspect request metrics from the dashboard.
-- Run scheduled token refresh, health checks, and retention cleanup with a Cloudflare cron trigger.
+- Test upstream requests in Playground.
+- Run scheduled token refresh, health checks, and expired OAuth state cleanup with a Cloudflare cron trigger.
 
 Auth Gateway runs exclusively on Cloudflare Workers and stores all application data in Cloudflare D1.
 

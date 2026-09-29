@@ -8,7 +8,6 @@ import {
 	providerInstances,
 	providerSecrets,
 } from "#/db/schema";
-import { recordAuditEvent } from "#/server/audit.server";
 import { sha256 } from "#/server/config.server";
 import {
 	createAssociatedData,
@@ -589,13 +588,6 @@ export async function finishOAuthConnection(callback: {
 		secrets,
 	);
 	await persistToken({ instanceId: instance.id, token, userId: record.userId });
-	recordAuditEvent({
-		action: "connection.oauth_connected",
-		metadata: { templateSlug: instance.templateSlug },
-		resourceId: instance.id,
-		resourceType: "connection",
-		userId: record.userId,
-	});
 	return {
 		success: true,
 		message:
