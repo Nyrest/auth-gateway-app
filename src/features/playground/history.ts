@@ -51,6 +51,8 @@ export type PlaygroundHistoryEntry = {
 
 const databaseName = "auth-gateway-playground";
 const storeName = "history";
+const userHistoryIndexName = "user-created-size";
+const databaseVersion = 2;
 const maximumEntries = 50;
 const maximumBytes = 200 * 1024 * 1024;
 const maximumEntryBytes = 100 * 1024 * 1024;
@@ -73,15 +75,46 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 
 function openDatabase(): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {
-		const request = indexedDB.open(databaseName, 1);
+		const request = indexedDB.open(databaseName, databaseVersion);
 		request.onupgradeneeded = () => {
-			if (!request.result.objectStoreNames.contains(storeName)) {
-				request.result.createObjectStore(storeName, { keyPath: "id" });
+			const transaction = request.transaction;
+			if (!transaction) {
+				reject(new Error("The Playground history upgrade could not start."));
+				return;
+			}
+			const store = request.result.objectStoreNames.contains(storeName)
+				? transaction.objectStore(storeName)
+				: request.result.createObjectStore(storeName, { keyPath: "id" });
+			if (!store.indexNames.contains(userHistoryIndexName)) {
+				store.createIndex(userHistoryIndexName, [
+					"userId",
+					"createdAt",
+					"storageBytes",
+				]);
 			}
 		};
-		request.onsuccess = () => resolve(request.result);
+		request.onsuccess = () => {
+			const database = request.result;
+			database.onversionchange = () => database.close();
+			resolve(database);
+		};
 		request.onerror = () => reject(request.error);
 	});
+}
+
+function userHistoryRange(userId: string): IDBKeyRange {
+	return IDBKeyRange.bound(
+		[userId, Number.MIN_SAFE_INTEGER, Number.MIN_SAFE_INTEGER],
+		[userId, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+	);
+}
+
+function isHistoryEntryOverLimit(
+	index: number,
+	totalBytes: number,
+	entryBytes: number,
+): boolean {
+	return index >= maximumEntries || totalBytes + entryBytes > maximumBytes;
 }
 
 export function toStoredFile(file: File): StoredFile {
@@ -215,13 +248,34 @@ export async function listPlaygroundHistory(
 	const database = await openDatabase();
 	try {
 		const transaction = database.transaction(storeName, "readonly");
-		const entries = (await requestResult(
-			transaction.objectStore(storeName).getAll(),
-		)) as PlaygroundHistoryEntry[];
-		await transactionDone(transaction);
-		return entries
-			.filter((entry) => entry.userId === userId)
-			.sort((left, right) => right.createdAt - left.createdAt);
+		const request = transaction
+			.objectStore(storeName)
+			.index(userHistoryIndexName)
+			.openCursor(userHistoryRange(userId), "prev");
+		const entries: PlaygroundHistoryEntry[] = [];
+		const readEntries = new Promise<PlaygroundHistoryEntry[]>(
+			(resolve, reject) => {
+				request.onsuccess = () => {
+					const cursor = request.result;
+					if (!cursor || entries.length >= maximumEntries) {
+						resolve(entries);
+						return;
+					}
+					entries.push(cursor.value as PlaygroundHistoryEntry);
+					if (entries.length >= maximumEntries) {
+						resolve(entries);
+						return;
+					}
+					cursor.continue();
+				};
+				request.onerror = () => reject(request.error);
+			},
+		);
+		const [result] = await Promise.all([
+			readEntries,
+			transactionDone(transaction),
+		]);
+		return result;
 	} finally {
 		database.close();
 	}
@@ -237,12 +291,45 @@ export function discardedPlaygroundHistoryIds(
 	let total = 0;
 	const discarded: string[] = [];
 	for (const [index, item] of userEntries.entries()) {
-		total += item.storageBytes;
-		if (index >= maximumEntries || total > maximumBytes) {
+		if (isHistoryEntryOverLimit(index, total, item.storageBytes)) {
 			discarded.push(item.id);
 		}
+		total += item.storageBytes;
 	}
 	return discarded;
+}
+
+function pruneUserHistory(
+	store: IDBObjectStore,
+	userId: string,
+): Promise<void> {
+	const request = store
+		.index(userHistoryIndexName)
+		.openKeyCursor(userHistoryRange(userId), "prev");
+	return new Promise((resolve, reject) => {
+		let index = 0;
+		let totalBytes = 0;
+		request.onsuccess = () => {
+			const cursor = request.result;
+			if (!cursor) {
+				resolve();
+				return;
+			}
+			const indexKey = cursor.key;
+			if (!Array.isArray(indexKey) || typeof indexKey[2] !== "number") {
+				reject(new Error("A Playground history index entry is invalid."));
+				return;
+			}
+			const storageBytes = indexKey[2];
+			if (isHistoryEntryOverLimit(index, totalBytes, storageBytes)) {
+				cursor.delete();
+			}
+			totalBytes += storageBytes;
+			index += 1;
+			cursor.continue();
+		};
+		request.onerror = () => reject(request.error);
+	});
 }
 
 export async function savePlaygroundHistory(
@@ -253,14 +340,10 @@ export async function savePlaygroundHistory(
 	try {
 		const transaction = database.transaction(storeName, "readwrite");
 		const store = transaction.objectStore(storeName);
-		store.put(prepared);
-		const entries = (await requestResult(
-			store.getAll(),
-		)) as PlaygroundHistoryEntry[];
-		for (const id of discardedPlaygroundHistoryIds(entries, prepared.userId)) {
-			store.delete(id);
-		}
-		await transactionDone(transaction);
+		const writeComplete = transactionDone(transaction);
+		const put = store.put(prepared);
+		const prune = pruneUserHistory(store, prepared.userId);
+		await Promise.all([requestResult(put), prune, writeComplete]);
 		return prepared;
 	} finally {
 		database.close();

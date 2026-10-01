@@ -11,6 +11,8 @@ import type {
 } from "#/features/playground/history";
 import { m } from "#/paraglide/messages.js";
 
+const maximumPreviewBytes = 1024 * 1024;
+
 function contentType(headers: readonly PlaygroundHeader[]): string | undefined {
 	return headers.find((header) => header.key.toLowerCase() === "content-type")
 		?.value;
@@ -30,17 +32,32 @@ export function PlaygroundResponsePanel({
 	readonly response?: PlaygroundResponse;
 }) {
 	const [text, setText] = useState("");
-	useEffect(() => {
-		void response?.body
-			?.text()
-			.then((value) => setText(value))
-			.catch(() => setText(""));
-	}, [response]);
 	const type = contentType(response?.headers ?? []);
 	const printable = Boolean(
 		type?.startsWith("text/") ||
 			type?.includes("json") ||
 			type?.includes("xml"),
+	);
+	const body = response?.body;
+	useEffect(() => {
+		let cancelled = false;
+		setText("");
+		if (!printable || !body) return;
+		void body
+			.slice(0, maximumPreviewBytes)
+			.text()
+			.then((value) => {
+				if (!cancelled) setText(value);
+			})
+			.catch(() => {
+				if (!cancelled) setText("");
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [body, printable]);
+	const previewLimited = Boolean(
+		printable && body && body.size > maximumPreviewBytes,
 	);
 	const content = useMemo(() => {
 		if (!type?.includes("json")) return text;
@@ -88,9 +105,27 @@ export function PlaygroundResponsePanel({
 						</TabsList>
 						<TabsContent value="body" className="mt-3">
 							{printable ? (
-								<pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap">
-									{content}
-								</pre>
+								<>
+									{previewLimited ? (
+										<div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+											<p className="text-xs text-muted-foreground">
+												{m.response_preview_limited()}
+											</p>
+											<Button
+												type="button"
+												size="sm"
+												variant="outline"
+												onClick={download}
+											>
+												<Download data-icon="inline-start" />
+												{m.download()}
+											</Button>
+										</div>
+									) : null}
+									<pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap">
+										{content}
+									</pre>
+								</>
 							) : (
 								<Button type="button" variant="outline" onClick={download}>
 									<Download data-icon="inline-start" />

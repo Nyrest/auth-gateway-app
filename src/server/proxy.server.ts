@@ -1,10 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "#/db/index.server";
-import { type apiKeys, providerInstances } from "#/db/schema";
+import { providerInstances } from "#/db/schema";
 import {
 	asStringArray,
 	findActiveApiKey,
-	getOrCreatePlaygroundApiKey,
 } from "#/features/api-keys/api-keys.server";
 import { getProviderDefinition } from "#/features/connections/providers/registry";
 import { readConnectionSecrets } from "#/features/connections/secrets.server";
@@ -424,8 +423,6 @@ function rewriteSseEndpoint(
 	);
 }
 
-type ProxyApiKey = typeof apiKeys.$inferSelect;
-
 function assertProxyPath(path: string): void {
 	if (path.length > 8_192) {
 		throw new GatewayError(
@@ -438,12 +435,12 @@ function assertProxyPath(path: string): void {
 
 async function proxyWithInstance(
 	request: Request,
-	key: ProxyApiKey,
+	userId: string,
 	instance: typeof providerInstances.$inferSelect,
 	path: string,
 ): Promise<Response> {
 	const outboundHeaders = copyRequestHeaders(request.headers);
-	const secrets = await readConnectionSecrets(key.userId, instance.id);
+	const secrets = await readConnectionSecrets(userId, instance.id);
 	injectConnectionCredentials(
 		outboundHeaders,
 		instance.templateSlug,
@@ -587,7 +584,7 @@ export async function proxyRequest(
 	}
 	return proxyWithInstance(
 		request,
-		key,
+		key.userId,
 		candidates[randomIndex(candidates.length)],
 		path,
 	);
@@ -600,7 +597,6 @@ export async function proxyPlaygroundRequest(
 	path: string,
 ): Promise<Response> {
 	assertProxyPath(path);
-	const key = await getOrCreatePlaygroundApiKey(userId);
 	const [instance] = await getDb()
 		.select()
 		.from(providerInstances)
@@ -621,5 +617,5 @@ export async function proxyPlaygroundRequest(
 			"The selected connection is not available for proxying.",
 		);
 	}
-	return proxyWithInstance(request, key, instance, path);
+	return proxyWithInstance(request, userId, instance, path);
 }

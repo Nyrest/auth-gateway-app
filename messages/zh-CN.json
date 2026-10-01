@@ -405,6 +405,7 @@
 	,"add_field": "添加字段"
 	,"load_request": "加载请求"
 	,"download": "下载"
+	,"response_preview_limited": "预览仅显示前 1 MiB，下载可获取完整响应。"
 	,"no_response": "暂无响应"
 	,"no_history": "暂无历史"
 	,"connection_unavailable": "连接不可用"

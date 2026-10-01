@@ -61,6 +61,14 @@ describe("Playground local history", () => {
 		]);
 	});
 
+	test("discards older entries when the user's history exceeds its byte limit", () => {
+		const entries = [
+			historyEntry("newest", 2, 150 * 1024 * 1024),
+			historyEntry("older", 1, 60 * 1024 * 1024),
+		];
+		expect(discardedPlaygroundHistoryIds(entries, "user")).toEqual(["older"]);
+	});
+
 	test("reduces oversized binary history to metadata plus a response preview", async () => {
 		const oversized = new Blob([new Uint8Array(101 * 1024 * 1024)]);
 		const prepared = await preparePlaygroundHistoryEntry({

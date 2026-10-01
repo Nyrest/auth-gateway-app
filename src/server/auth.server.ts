@@ -11,6 +11,42 @@ import { type GatewayDatabase, getDb } from "../db/index.server";
 import { createAuthBaseUrl } from "./auth-origin.server";
 import { getBetterAuthSecret } from "./config.server";
 
+const publicOriginCacheTtlMs = 10_000;
+
+let publicOriginCache:
+	| { readonly expiresAt: number; readonly value: string | undefined }
+	| undefined;
+let publicOriginCacheGeneration = 0;
+
+export function invalidatePublicOriginCache(): void {
+	publicOriginCacheGeneration += 1;
+	publicOriginCache = undefined;
+}
+
+async function getPublicOrigin(
+	database: GatewayDatabase,
+): Promise<string | undefined> {
+	const now = Date.now();
+	if (publicOriginCache && publicOriginCache.expiresAt > now) {
+		return publicOriginCache.value;
+	}
+	// Keep only the resolved setting; D1 objects and their promises stay request-scoped.
+	const generation = publicOriginCacheGeneration;
+	const [settings] = await database
+		.select({ publicOrigin: appSettings.publicOrigin })
+		.from(appSettings)
+		.where(eq(appSettings.id, "primary"))
+		.limit(1);
+	const value = settings?.publicOrigin ?? undefined;
+	if (generation === publicOriginCacheGeneration) {
+		publicOriginCache = {
+			expiresAt: Date.now() + publicOriginCacheTtlMs,
+			value,
+		};
+	}
+	return value;
+}
+
 export async function getAuth(
 	baseURLOverride?: string,
 	database?: GatewayDatabase,
@@ -18,12 +54,7 @@ export async function getAuth(
 	const db = database ?? getDb();
 	let publicOrigin = baseURLOverride;
 	if (publicOrigin === undefined) {
-		const [settings] = await db
-			.select({ publicOrigin: appSettings.publicOrigin })
-			.from(appSettings)
-			.where(eq(appSettings.id, "primary"))
-			.limit(1);
-		publicOrigin = settings?.publicOrigin ?? undefined;
+		publicOrigin = await getPublicOrigin(db);
 	}
 
 	return betterAuth({

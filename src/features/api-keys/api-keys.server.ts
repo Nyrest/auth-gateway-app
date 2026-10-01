@@ -143,20 +143,27 @@ export async function listApiKeys(
 						? desc(orderColumn)
 						: asc(orderColumn),
 				];
-	const [{ total }] = await db
-		.select({ total: count() })
-		.from(apiKeys)
-		.where(where);
 	const keys = await db
-		.select()
+		.select({
+			key: apiKeys,
+			// Preserve the exact total with the page query instead of a second D1 round trip.
+			total: sql<number>`count(*) over ()`.as("total"),
+		})
 		.from(apiKeys)
 		.where(where)
 		.orderBy(...orderBy, desc(apiKeys.createdAt))
 		.limit(normalized.pageSize)
 		.offset(normalized.page * normalized.pageSize);
-	const totalCount = Number(total ?? 0);
+	let totalCount = Number(keys[0]?.total ?? 0);
+	if (keys.length === 0 && normalized.page > 0) {
+		const [{ total }] = await db
+			.select({ total: count() })
+			.from(apiKeys)
+			.where(where);
+		totalCount = Number(total ?? 0);
+	}
 	return {
-		items: keys.map(toView),
+		items: keys.map(({ key }) => toView(key)),
 		total: totalCount,
 		page: normalized.page,
 		pageSize: normalized.pageSize,
@@ -442,47 +449,6 @@ export async function findActiveApiKey(rawKey: string) {
 		)
 		.limit(1);
 	return key;
-}
-
-export async function getOrCreatePlaygroundApiKey(userId: string) {
-	const db = getDb();
-	const existing = await db
-		.select()
-		.from(apiKeys)
-		.where(and(eq(apiKeys.userId, userId), eq(apiKeys.keyKind, "playground")))
-		.limit(1);
-	if (existing[0]) return existing[0];
-
-	const id = uuidv7();
-	const now = new Date();
-	await db
-		.insert(apiKeys)
-		.values({
-			id,
-			userId,
-			label: "Playground",
-			prefix: `agw_playground_${id.slice(0, 8)}`,
-			digest: sha256(createApiKeySecret()),
-			keyKind: "playground",
-			providerScopeMode: "all",
-			providerSlugs: [],
-			instanceIds: [],
-			createdAt: now,
-			updatedAt: now,
-		})
-		.onConflictDoNothing();
-	const [created] = await db
-		.select()
-		.from(apiKeys)
-		.where(and(eq(apiKeys.userId, userId), eq(apiKeys.keyKind, "playground")))
-		.limit(1);
-	if (!created)
-		throw new GatewayError(
-			500,
-			"PLAYGROUND_API_KEY_CREATE_FAILED",
-			"The Playground API key could not be created.",
-		);
-	return created;
 }
 
 export { asStringArray };

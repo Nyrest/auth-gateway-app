@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { getDb } from "#/db/index.server";
 import { appSettings } from "#/db/schema";
+import { invalidatePublicOriginCache } from "#/server/auth.server";
 import { GatewayError } from "#/server/errors";
 import { isAlwaysAllowedLoopbackHost } from "#/server/local-origin.server";
 
@@ -107,5 +108,6 @@ export async function updateSystemSettings(
 			"System settings are unavailable.",
 		);
 	}
+	invalidatePublicOriginCache();
 	return updated;
 }

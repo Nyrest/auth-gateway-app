@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+	foreignKey,
 	index,
 	integer,
 	sqliteTable,
@@ -95,6 +96,10 @@ export const providerInstances = sqliteTable(
 		...timestampColumns,
 	},
 	(table) => [
+		uniqueIndex("provider_instance_user_id_id_idx").on(
+			table.userId,
+			table.id,
+		),
 		uniqueIndex("provider_instance_user_instance_slug_idx").on(
 			table.userId,
 			table.instanceSlug,
@@ -132,13 +137,16 @@ export const providerSecrets = sqliteTable(
 			.notNull()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		instanceId: text("instance_id")
-			.notNull()
-			.references(() => providerInstances.id, { onDelete: "cascade" }),
+			.notNull(),
 		fieldKey: text("field_key").notNull(),
 		envelope: text("envelope").notNull(),
 		...timestampColumns,
 	},
 	(table) => [
+		foreignKey({
+			columns: [table.userId, table.instanceId],
+			foreignColumns: [providerInstances.userId, providerInstances.id],
+		}).onDelete("cascade"),
 		uniqueIndex("provider_secret_instance_field_idx").on(
 			table.instanceId,
 			table.fieldKey,
@@ -160,13 +168,16 @@ export const oauthStates = sqliteTable(
 			.notNull()
 			.references(() => authUsers.id, { onDelete: "cascade" }),
 		instanceId: text("instance_id")
-			.notNull()
-			.references(() => providerInstances.id, { onDelete: "cascade" }),
+			.notNull(),
 		expiresAt: timestamp("expires_at").notNull(),
 		consumedAt: timestamp("consumed_at"),
 		...timestampColumns,
 	},
 	(table) => [
+		foreignKey({
+			columns: [table.userId, table.instanceId],
+			foreignColumns: [providerInstances.userId, providerInstances.id],
+		}).onDelete("cascade"),
 		uniqueIndex("oauth_state_digest_idx").on(table.stateDigest),
 		index("oauth_state_instance_expiry_idx").on(
 			table.instanceId,

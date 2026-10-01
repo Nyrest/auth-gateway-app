@@ -29,7 +29,6 @@ import { clearCurrentSessionQueryCache } from "#/lib/api";
 import { m } from "#/paraglide/messages.js";
 
 export const Route = createFileRoute("/setup")({
-	loader: () => getSetupStatus(),
 	beforeLoad: async () => {
 		const status = await getSetupStatus();
 		if (!status.setupRequired) {

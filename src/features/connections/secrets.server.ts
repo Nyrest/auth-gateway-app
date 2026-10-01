@@ -48,15 +48,28 @@ export async function saveConnectionSecrets(
 	database: GatewayDatabase = getDb(),
 ): Promise<void> {
 	const now = new Date();
-	for (const [fieldKey, value] of values) {
-		if (!value) {
-			continue;
-		}
-		const envelope = await encryptSecret(
-			value,
-			createAssociatedData(userId, instanceId, fieldKey),
-		);
-		await database
+	const providedValues = [...values].flatMap(([fieldKey, value]) =>
+		value ? [{ fieldKey, value }] : [],
+	);
+	if (providedValues.length === 0) return;
+
+	const encryptedValues = await Promise.all(
+		providedValues.map(async ({ fieldKey, value }) => ({
+			fieldKey,
+			envelope: await encryptSecret(
+				value,
+				createAssociatedData(userId, instanceId, fieldKey),
+			),
+		})),
+	);
+
+	const [first, ...remaining] = encryptedValues;
+	if (!first) return;
+	const insertSecret = ({
+		fieldKey,
+		envelope,
+	}: (typeof encryptedValues)[number]) =>
+		database
 			.insert(providerSecrets)
 			.values({
 				id: uuidv7(),
@@ -71,5 +84,8 @@ export async function saveConnectionSecrets(
 				target: [providerSecrets.instanceId, providerSecrets.fieldKey],
 				set: { envelope, updatedAt: now },
 			});
-	}
+	await database.batch([
+		insertSecret(first),
+		...remaining.map(insertSecret),
+	] as const);
 }

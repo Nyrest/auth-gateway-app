@@ -405,6 +405,7 @@
 	,"add_field": "Add field"
 	,"load_request": "Load request"
 	,"download": "Download"
+	,"response_preview_limited": "Preview limited to the first 1 MiB. Download the full response."
 	,"no_response": "No response yet"
 	,"no_history": "No history"
 	,"connection_unavailable": "Connection unavailable"

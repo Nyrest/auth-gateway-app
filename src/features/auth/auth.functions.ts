@@ -7,7 +7,11 @@ import {
 	changePasswordSchema,
 	setupSchema,
 } from "#/features/auth/auth-validation";
-import { getAuth, getSession } from "#/server/auth.server";
+import {
+	getAuth,
+	getSession,
+	invalidatePublicOriginCache,
+} from "#/server/auth.server";
 import { requireUser } from "#/server/auth-middleware";
 import { GatewayError } from "#/server/errors";
 import { isAlwaysAllowedLoopbackHost } from "#/server/local-origin.server";
@@ -102,6 +106,7 @@ export const completeSetup = createServerFn({ method: "POST" })
 					"This installation has already been claimed.",
 				);
 			}
+			invalidatePublicOriginCache();
 		} catch (error) {
 			// Better Auth creates the user before the D1 claim batch. Removing a
 			// failed claimant cascades its auth records and releases owner_user_id.
