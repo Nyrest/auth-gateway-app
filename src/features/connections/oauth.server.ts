@@ -21,6 +21,7 @@ import {
 	readJsonResponse,
 } from "#/server/outbound-request.server";
 import { parseHttpUrl } from "#/server/url.server";
+import { requestToken, type TokenResponse } from "./oauth-token.server";
 import {
 	createPkceChallenge,
 	createPkceVerifier,
@@ -32,13 +33,6 @@ import { getOAuthEndpoints, getProviderTemplate } from "./templates";
 type OAuthEndpoints = {
 	readonly authorizationUrl: string;
 	readonly tokenUrl: string;
-};
-
-type TokenResponse = {
-	readonly access_token?: string;
-	readonly expires_in?: number;
-	readonly refresh_token?: string;
-	readonly token_type?: string;
 };
 
 class LeaseLostError extends Error {}
@@ -202,80 +196,6 @@ async function resolveOAuthEndpoints(
 		"OAUTH_NOT_SUPPORTED",
 		"This connection does not use OAuth.",
 	);
-}
-
-function asTokenResponse(payload: unknown): TokenResponse {
-	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-		throw new GatewayError(
-			502,
-			"OAUTH_TOKEN_INVALID",
-			"The OAuth token response was invalid.",
-		);
-	}
-	const result = payload as Record<string, unknown>;
-	return {
-		access_token:
-			typeof result.access_token === "string" ? result.access_token : undefined,
-		expires_in:
-			typeof result.expires_in === "number" ? result.expires_in : undefined,
-		refresh_token:
-			typeof result.refresh_token === "string"
-				? result.refresh_token
-				: undefined,
-		token_type:
-			typeof result.token_type === "string" ? result.token_type : undefined,
-	};
-}
-
-async function requestToken(
-	tokenUrl: string,
-	body: URLSearchParams,
-	secrets: ReadonlyMap<string, string>,
-): Promise<TokenResponse> {
-	let response: Response;
-	try {
-		const headers = new Headers({
-			accept: "application/json",
-			"content-type": "application/x-www-form-urlencoded",
-		});
-		applyCustomHeaders(headers, secrets);
-		response = await fetchUpstream(tokenUrl, {
-			method: "POST",
-			headers,
-			body,
-			redirect: "error",
-			timeoutMs: 15_000,
-		});
-	} catch (error) {
-		if (
-			error instanceof GatewayError &&
-			error.code === "INVALID_INJECTED_HEADER"
-		) {
-			throw error;
-		}
-		throw new GatewayError(
-			502,
-			"OAUTH_TOKEN_REQUEST_FAILED",
-			"The OAuth token endpoint could not be reached.",
-		);
-	}
-	const payload = await readJsonResponse(response).catch(() => null);
-	if (!response.ok) {
-		throw new GatewayError(
-			502,
-			"OAUTH_TOKEN_REQUEST_FAILED",
-			"The OAuth token endpoint rejected the request.",
-		);
-	}
-	const token = asTokenResponse(payload);
-	if (!token.access_token) {
-		throw new GatewayError(
-			502,
-			"OAUTH_TOKEN_INVALID",
-			"The OAuth token response has no access token.",
-		);
-	}
-	return token;
 }
 
 async function persistToken(input: {

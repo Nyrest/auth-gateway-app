@@ -4,6 +4,15 @@
   "compatibility_date": "2026-08-30",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/runtime/cloudflare/worker.ts",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
   "d1_databases": [
     {
       "binding": "DB",
